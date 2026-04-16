@@ -14,7 +14,7 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            height: 100dvh; /* Dynamic viewport for iOS */
+            height: 100dvh; 
             padding-top: env(safe-area-inset-top);
             padding-bottom: env(safe-area-inset-bottom);
             box-sizing: border-box;
@@ -50,8 +50,8 @@
         }
 
         .btn-record-wrapper {
-            width: 70px;
-            height: 70px;
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
             border: 4px solid white;
             display: flex;
@@ -61,17 +61,24 @@
         }
 
         .btn-record-inner {
-            width: 54px;
-            height: 54px;
+            width: 64px;
+            height: 64px;
             background-color: #ff3b30;
             border-radius: 50%;
             transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
         }
 
         .is-recording .btn-record-inner {
-            width: 30px;
-            height: 30px;
+            width: 40px;
+            height: 40px;
             border-radius: 8px; 
+            background-color: #ff3b30;
         }
 
         #status-text {
@@ -86,6 +93,54 @@
             display: none;
             z-index: 10;
         }
+
+        /* NEW: Review Overlay Styles */
+        #review-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100dvh;
+            background: black;
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+        }
+
+        #review-video {
+            width: 100%;
+            flex-grow: 1;
+            object-fit: contain; /* Ensures the whole video is visible for review */
+            background: #1c1c1e;
+        }
+
+        .review-controls {
+            height: 120px;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+
+        .btn-retake {
+            background: #3a3a3c;
+            color: white;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 18px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-use {
+            background: #007aff;
+            color: white;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 18px;
+            border: none;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -93,21 +148,34 @@
     <div id="status-text">Recording... <span id="timer">00:00</span></div>
     <video id="camera-feed" autoplay playsinline muted></video>
     
-    <div class="camera-controls">
+    <div class="camera-controls" id="camera-controls">
         <button class="btn-cancel" onclick="cancelCamera()">Cancel</button>
         
         <div class="btn-record-wrapper" id="btn-record">
-            <div class="btn-record-inner"></div>
+            <div class="btn-record-inner" id="record-inner-text">START</div>
         </div>
         
-        <div style="width: 60px;"></div> 
+        <div style="width: 70px;"></div> 
+    </div>
+
+    <div id="review-overlay">
+        <video id="review-video" controls playsinline></video>
+        <div class="review-controls">
+            <button class="btn-retake" onclick="retakeVideo()">Retake</button>
+            <button class="btn-use" onclick="useVideo()" id="btn-use-video">Use Video</button>
+        </div>
     </div>
 
     <script>
         const videoElement = document.getElementById('camera-feed');
         const recordBtn = document.getElementById('btn-record');
+        const recordInnerText = document.getElementById('record-inner-text');
         const statusText = document.getElementById('status-text');
-        const timerText = document.getElementById('timer');
+        const cameraControls = document.getElementById('camera-controls');
+        
+        const reviewOverlay = document.getElementById('review-overlay');
+        const reviewVideo = document.getElementById('review-video');
+        const useVideoBtn = document.getElementById('btn-use-video');
 
         let mediaStream = null;
         let mediaRecorder = null;
@@ -115,16 +183,17 @@
         let isRecording = false;
         let timerInterval = null;
         let secondsRecorded = 0;
+        let finalVideoBlob = null;
 
         async function setupCamera() {
             try {
+                // FIX: 'ideal' allows fallback to a laptop webcam if a rear camera doesn't exist
                 mediaStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+                    video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
                     audio: false 
                 });
                 videoElement.srcObject = mediaStream;
                 
-                // FIX: Let iOS dictate its native format (usually video/mp4) instead of forcing WebM
                 mediaRecorder = new MediaRecorder(mediaStream);
                 
                 mediaRecorder.ondataavailable = (event) => {
@@ -133,7 +202,8 @@
                     }
                 };
 
-                mediaRecorder.onstop = saveAndNavigate;
+                // Trigger the review popup when recording stops
+                mediaRecorder.onstop = showReviewOverlay;
 
             } catch (error) {
                 console.error("Camera access error:", error);
@@ -143,12 +213,14 @@
 
         recordBtn.addEventListener('click', () => {
             if (!isRecording) {
+                // START RECORDING
                 recordedChunks = [];
-                // Ask recorder to output data every 500ms (Ensures iOS captures frames smoothly)
-                mediaRecorder.start(500);
+                mediaRecorder.start(500); // 500ms chunks for iOS stability
                 isRecording = true;
                 
+                // UI Updates
                 recordBtn.classList.add('is-recording');
+                recordInnerText.innerText = "STOP";
                 statusText.style.display = 'block';
                 statusText.innerHTML = 'Recording... <span id="timer">00:00</span>';
                 const dynamicTimer = document.getElementById('timer');
@@ -162,19 +234,53 @@
                 }, 1000);
 
             } else {
+                // STOP RECORDING
                 mediaRecorder.stop();
                 isRecording = false;
                 
+                // UI Updates
                 recordBtn.classList.remove('is-recording');
+                recordInnerText.innerText = "START";
                 clearInterval(timerInterval);
-                statusText.innerText = "Saving video...";
+                statusText.innerText = "Processing...";
             }
         });
 
-        function saveAndNavigate() {
-            // FIX: Pull the exact format type that iOS used directly from the chunks
+        // NEW: Show the popup and load the video
+        function showReviewOverlay() {
             const finalType = recordedChunks[0]?.type || 'video/mp4';
-            const videoBlob = new Blob(recordedChunks, { type: finalType });
+            finalVideoBlob = new Blob(recordedChunks, { type: finalType });
+            
+            reviewVideo.src = URL.createObjectURL(finalVideoBlob);
+            
+            // Hide camera UI, show review UI
+            cameraControls.style.display = 'none';
+            statusText.style.display = 'none';
+            reviewOverlay.style.display = 'flex';
+            
+            // Auto-play the preview
+            reviewVideo.play();
+        }
+
+        // NEW: Retake button logic
+        function retakeVideo() {
+            // Stop preview
+            reviewVideo.pause();
+            reviewVideo.src = "";
+            
+            // Clear memory
+            recordedChunks = [];
+            finalVideoBlob = null;
+            
+            // Hide review UI, show camera UI
+            reviewOverlay.style.display = 'none';
+            cameraControls.style.display = 'flex';
+        }
+
+        // MOVED: The IndexedDB save logic now lives in the Use Video button
+        function useVideo() {
+            useVideoBtn.innerText = "Saving...";
+            useVideoBtn.disabled = true;
 
             const request = indexedDB.open('KickTrackerDB', 1);
 
@@ -190,7 +296,7 @@
                 const transaction = db.transaction('videos', 'readwrite');
                 const store = transaction.objectStore('videos');
                 
-                store.put(videoBlob, 'latest_kick');
+                store.put(finalVideoBlob, 'latest_kick');
                 
                 transaction.oncomplete = () => {
                     shutdownCamera();
@@ -200,7 +306,9 @@
 
             request.onerror = (e) => {
                 console.error("Failed to save video to database:", e);
-                alert("Failed to save video.");
+                alert("Failed to save video. Please try again.");
+                useVideoBtn.innerText = "Use Video";
+                useVideoBtn.disabled = false;
             };
         }
 
