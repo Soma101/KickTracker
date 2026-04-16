@@ -14,10 +14,16 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            height: 100dvh; /* Uses exact device height to prevent scrolling */
             margin: 0;
-            background-color: #ffffff;
+            background-color: #000; /* Sets background to pure black */
+            color: #fff; /* Sets primary text to white */
             text-align: center;
+            
+            /* Protects content from the notch and home indicator */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            box-sizing: border-box;
         }
 
         h1 {
