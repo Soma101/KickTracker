@@ -75,8 +75,12 @@
             background: #000;
         }
 
+        /* Shrink-wraps the video to maintain perfect aspect ratio */
         .zoom-wrapper {
             position: relative;
+            display: inline-flex; 
+            max-width: 100%;
+            max-height: 100%;
             transition: transform 0.3s ease-in-out;
             transform-origin: center center;
         }
@@ -85,6 +89,8 @@
             display: block;
             max-width: 100%;
             max-height: 100%;
+            width: auto;
+            height: auto;
         }
 
         canvas {
@@ -93,7 +99,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            touch-action: none; /* Prevents scrolling while tracing */
+            touch-action: none; 
         }
 
         .upload-placeholder {
@@ -209,7 +215,7 @@
             Cam Depth (Yds): <span id="depth-val">15</span>
             <input type="range" id="cam-depth" min="5" max="50" step="1" value="15" style="flex-grow:1;">
         </div>
-        <div class="results-box" id="results-text">1. Set Camera Distance. Place 10yd scale dots.</div>
+        <div class="results-box" id="results-text">Set Camera Distance. Tap to place 1st scale dot.</div>
     </div>
 
     <div class="viewport-container" id="viewport-container">
@@ -252,7 +258,7 @@
     </div>
 
     <div class="workflow-bar">
-        <button id="btn-workflow" class="workflow-btn" disabled>Set 10yd Scale First</button>
+        <button id="btn-workflow" class="workflow-btn" disabled>Awaiting Video...</button>
     </div>
 
     <div id="report-modal">
@@ -396,14 +402,10 @@
         });
 
         function handleTap(pt) {
-            if (scaleDots.length < 2) {
-                scaleDots.push(pt);
-                if (scaleDots.length === 2) updateResultsText("1. Scrub to Impact. Tap ball.");
-            } else {
-                activeTap = pt;
-                if(zoomLevel > 1) {
-                   zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
-                }
+            // Simply set the active tap for the crosshair
+            activeTap = pt;
+            if(zoomLevel > 1) {
+               zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
             }
             updateWorkflow();
         }
@@ -507,13 +509,36 @@
             }
 
             btn.disabled = false;
-            if (scaleDots.length < 2) {
-                btn.innerText = "Set 10yd Scale First";
-                btn.disabled = true;
-                btn.style.background = '#3a3a3c';
+            
+            // New Interactive Logic for Scale Dots
+            if (scaleDots.length === 0) {
+                btn.innerText = "SET 1ST SCALE DOT";
+                btn.style.background = '#007aff';
+                btn.style.color = 'white';
+                btn.disabled = (activeTap === null);
+                btn.onclick = () => { 
+                    scaleDots.push(activeTap); 
+                    activeTap = null; 
+                    updateResultsText("Tap to place 2nd scale dot."); 
+                    updateWorkflow(); 
+                    draw(); 
+                };
+            } else if (scaleDots.length === 1) {
+                btn.innerText = "SET 2ND SCALE DOT";
+                btn.style.background = '#007aff';
+                btn.style.color = 'white';
+                btn.disabled = (activeTap === null);
+                btn.onclick = () => { 
+                    scaleDots.push(activeTap); 
+                    activeTap = null; 
+                    updateResultsText("1. Scrub to Impact. Tap ball."); 
+                    updateWorkflow(); 
+                    draw(); 
+                };
             } else if (startPt === null) {
                 btn.innerText = "LOCK IMPACT";
                 btn.style.background = '#34c759';
+                btn.style.color = 'white';
                 btn.disabled = (activeTap === null);
                 btn.onclick = () => { isAdjustingSize = true; updateResultsText("Trace the ball outline."); updateWorkflow(); };
             } else if (ascentPt === null) {
@@ -543,6 +568,7 @@
             } else {
                 btn.innerText = "VIEW REPORT";
                 btn.style.background = '#007aff';
+                btn.style.color = 'white';
                 btn.onclick = showReportModal;
             }
         }
@@ -708,7 +734,7 @@
             activeReport = null; 
             document.getElementById('zoom-level').value = "1";
             zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`;
-            updateResultsText("1. Set Camera Distance. Then place 10yd scale dots.");
+            updateResultsText("Set Camera Distance. Tap to place 1st scale dot.");
             video.pause(); video.currentTime = 0; scrubber.value = 0;
             document.getElementById('btn-playpause').innerText = '▶';
             updateWorkflow(); draw();
@@ -736,12 +762,16 @@
             isVideoLoaded = true;
             document.getElementById('upload-placeholder').style.display = 'none';
             document.getElementById('sys-buttons').style.display = 'flex';
-            zoomWrapper.style.display = 'block';
+            zoomWrapper.style.display = 'inline-flex'; 
             document.getElementById('persistent-controls').style.display = 'flex';
             
-            const rect = video.getBoundingClientRect();
-            canvas.width = rect.width;
-            canvas.height = rect.height;
+            // Short delay ensures the CSS inline-flex layout updates the rect size before mapping canvas
+            setTimeout(() => {
+                const rect = video.getBoundingClientRect();
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+                draw();
+            }, 50);
             
             scrubber.max = video.duration;
             resetAll();
