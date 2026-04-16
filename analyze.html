@@ -368,36 +368,70 @@
 
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const w = canvas.width; const h = canvas.height;
+            
+            const w = canvas.width;
+            const h = canvas.height;
+            // invZoom is only used for the markers now, not the line width
             const invZoom = 1.0 / zoomLevel;
 
-            ctx.strokeStyle = '#ffff00';
-            ctx.lineWidth = 5 * invZoom; 
-            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.shadowColor = 'black'; ctx.shadowBlur = 5 * invZoom;
+            // --- CRITICAL VISIBILITY SETTINGS ---
+            ctx.strokeStyle = '#ffff00'; // Neon Yellow
+            ctx.lineWidth = 2.5;         // FIXED WIDTH: Stays crisp on screen when zooming
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            
+            // Tight black outline for contrast (no blur)
+            ctx.shadowColor = 'black';
+            ctx.shadowBlur = 2;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
 
+            // 1. Draw Scale Dots
             ctx.fillStyle = '#007aff';
             scaleDots.forEach(pt => {
-                ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, 8 * invZoom, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath();
+                ctx.arc(pt.x * w, pt.y * h, 6 * invZoom, 0, Math.PI * 2);
+                ctx.fill();
             });
 
+            // 2. Draw Trace (Now stays crisp during zoom)
             if (isAdjustingSize && activeTrace.length > 0) {
-                ctx.beginPath(); ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
-                for (let i = 1; i < activeTrace.length; i++) ctx.lineTo(activeTrace[i].x * w, activeTrace[i].y * h);
+                ctx.beginPath();
+                ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
+                for (let i = 1; i < activeTrace.length; i++) {
+                    ctx.lineTo(activeTrace[i].x * w, activeTrace[i].y * h);
+                }
                 ctx.stroke();
             }
 
+            // 3. Draw Crosshair (Now stays crisp during zoom)
             if (activeTap && !isAdjustingSize) {
-                const px = activeTap.x * w; const py = activeTap.y * h; const len = 12 * invZoom;
-                ctx.beginPath(); ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); ctx.stroke();
+                const px = activeTap.x * w;
+                const py = activeTap.y * h;
+                const len = 12 * invZoom; // Length still scales so it points to the right spot
+                
+                ctx.beginPath();
+                ctx.moveTo(px, py - len); ctx.lineTo(px, py + len);
+                ctx.moveTo(px - len, py); ctx.lineTo(px + len, py);
+                ctx.stroke();
             }
 
-            ctx.shadowBlur = 0;
-            const dotRad = 6 * invZoom;
+            // 4. Draw Physics Markers
+            ctx.shadowBlur = 0; // Turn off shadow for markers
+            const dotRad = 5 * invZoom;
             const drawMarker = (pt, color) => {
-                if (!pt) return; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2); ctx.fill();
+                if (!pt) return;
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2);
+                ctx.fill();
             };
-            drawMarker(startPt, '#34c759'); drawMarker(ascentPt, '#ffcc00'); drawMarker(peakPt, '#ff9500'); drawMarker(descentPt, '#ffcc00'); drawMarker(endPt, '#ff3b30'); 
+
+            drawMarker(startPt, '#34c759'); 
+            drawMarker(ascentPt, '#ffcc00'); 
+            drawMarker(peakPt, '#ff9500'); 
+            drawMarker(descentPt, '#ffcc00'); 
+            drawMarker(endPt, '#ff3b30'); 
         }
 
         function updateWorkflow() {
