@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="KickTracker">
     <title>Analyze Video</title>
     <style>
         body {
@@ -12,8 +15,13 @@
             color: #fff;
             display: flex;
             flex-direction: column;
-            height: 100vh;
+            /* Use dynamic viewport height to eliminate scrolling */
+            height: 100dvh;
+            /* Protect content from the notch and home indicator */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
             overflow: hidden;
+            box-sizing: border-box;
         }
         
         .sys-buttons {
@@ -402,7 +410,6 @@
         });
 
         function handleTap(pt) {
-            // Simply set the active tap for the crosshair
             activeTap = pt;
             if(zoomLevel > 1) {
                zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
@@ -510,7 +517,6 @@
 
             btn.disabled = false;
             
-            // New Interactive Logic for Scale Dots
             if (scaleDots.length === 0) {
                 btn.innerText = "SET 1ST SCALE DOT";
                 btn.style.background = '#007aff';
@@ -765,7 +771,6 @@
             zoomWrapper.style.display = 'inline-flex'; 
             document.getElementById('persistent-controls').style.display = 'flex';
             
-            // Short delay ensures the CSS inline-flex layout updates the rect size before mapping canvas
             setTimeout(() => {
                 const rect = video.getBoundingClientRect();
                 canvas.width = rect.width;
@@ -778,7 +783,7 @@
             updateWorkflow();
         }
 
-        // --- INDEXED DB LISTENER (Catches video from camera.html) ---
+        // --- INDEXED DB LISTENER ---
         window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('load') === 'latest') {
