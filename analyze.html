@@ -638,31 +638,16 @@
             // 3. Lateral Physics
             const points = [startPt, ascentPt, peakPt, descentPt].filter(p => p !== null);
             if (points.length < 2) return;
-
-            const p1 = scaleDots[0], p2 = scaleDots[1];
-            const scalePixelDist = Math.sqrt(
-                Math.pow((p2.x - p1.x) * canvas.width, 2) +
-                Math.pow((p2.y - p1.y) * canvas.height, 2)
-            );
             
-            const yardsPerNormalizedUnit = 10.0 / (scalePixelDist > 0 ? (scalePixelDist / canvas.width) : 0.1);
+            const p1 = scaleDots[0], p2 = scaleDots[1];
+            
+            // EXACT SWIFT MATCH: Calculate using normalized units, not raw canvas pixels
+            const scalePixelDist = Math.sqrt(
+                Math.pow((p2.x - p1.x), 2) +
+                Math.pow((p2.y - p1.y), 2)
+            );
 
-            const startX = points[0].pos.x;
-            let weightedDrift = 0.0;
-            let totalWeight = 0.0;
-
-            for (let i = 1; i < points.length; i++) {
-                const pt = points[i];
-                const dx = pt.pos.x - startX;
-                const tNorm = (pt.time - startPt.time) / (totalTime > 0 ? totalTime : 1.0);
-                const weight = Math.max(0.2, tNorm);
-                weightedDrift += dx * weight;
-                totalWeight += weight;
-            }
-
-            const avgDriftNormalized = weightedDrift / (totalWeight > 0 ? totalWeight : 1.0);
-            const trueDriftYards = avgDriftNormalized * yardsPerNormalizedUnit;
-            const v_x_yards = trueDriftYards / (totalTime > 0 ? totalTime : 1.0);
+const yardsPerNormalizedUnit = 10.0 / (scalePixelDist > 0 ? scalePixelDist : 0.1);
 
             // 4. Boundary Logic
             const a = 0.5 * gravity;
