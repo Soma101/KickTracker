@@ -15,15 +15,14 @@
             color: #fff;
             display: flex;
             flex-direction: column;
-            /* Use dynamic viewport height to eliminate scrolling */
             height: 100dvh;
-            /* Protect content from the notch and home indicator */
             padding-top: env(safe-area-inset-top);
             padding-bottom: env(safe-area-inset-bottom);
             overflow: hidden;
             box-sizing: border-box;
         }
         
+        /* Updated: Always displays the top bar */
         .sys-buttons {
             display: flex;
             justify-content: flex-end;
@@ -40,9 +39,10 @@
             cursor: pointer;
         }
         
-        #btn-home { background: #007aff; color: white; }
-        #btn-reset { background: #3a3a3c; color: white; }
-        #btn-new { background: #ff3b30; color: white; }
+        /* Updated: Home button pushed to the left side */
+        #btn-home { background: #007aff; color: white; margin-right: auto; }
+        #btn-reset { background: #3a3a3c; color: white; display: none; }
+        #btn-new { background: #ff3b30; color: white; display: none; }
         #file-upload { display: none; }
 
         .dashboard {
@@ -83,7 +83,6 @@
             background: #000;
         }
 
-        /* Shrink-wraps the video to maintain perfect aspect ratio */
         .zoom-wrapper {
             position: relative;
             display: inline-flex; 
@@ -200,8 +199,8 @@
 </head>
 <body>
 
-    <div class="sys-buttons" id="sys-buttons" style="display: none;">
-        <button id="btn-home" onclick="window.location.href='index.html'">Home</button>
+    <div class="sys-buttons" id="sys-buttons">
+        <button id="btn-home" onclick="window.location.href='index.html'">&#10094; Home</button>
         <button id="btn-reset" onclick="resetAll()">Reset</button>
         <button id="btn-new" onclick="document.getElementById('file-upload').click()">New Video</button>
         <input type="file" id="file-upload" accept="video/*">
@@ -638,16 +637,31 @@
             // 3. Lateral Physics
             const points = [startPt, ascentPt, peakPt, descentPt].filter(p => p !== null);
             if (points.length < 2) return;
-            
+
             const p1 = scaleDots[0], p2 = scaleDots[1];
-            
-            // EXACT SWIFT MATCH: Calculate using normalized units, not raw canvas pixels
             const scalePixelDist = Math.sqrt(
                 Math.pow((p2.x - p1.x), 2) +
                 Math.pow((p2.y - p1.y), 2)
             );
+            
+            const yardsPerNormalizedUnit = 10.0 / (scalePixelDist > 0 ? scalePixelDist : 0.1);
 
-const yardsPerNormalizedUnit = 10.0 / (scalePixelDist > 0 ? scalePixelDist : 0.1);
+            const startX = points[0].pos.x;
+            let weightedDrift = 0.0;
+            let totalWeight = 0.0;
+
+            for (let i = 1; i < points.length; i++) {
+                const pt = points[i];
+                const dx = pt.pos.x - startX;
+                const tNorm = (pt.time - startPt.time) / (totalTime > 0 ? totalTime : 1.0);
+                const weight = Math.max(0.2, tNorm);
+                weightedDrift += dx * weight;
+                totalWeight += weight;
+            }
+
+            const avgDriftNormalized = weightedDrift / (totalWeight > 0 ? totalWeight : 1.0);
+            const trueDriftYards = avgDriftNormalized * yardsPerNormalizedUnit;
+            const v_x_yards = trueDriftYards / (totalTime > 0 ? totalTime : 1.0);
 
             // 4. Boundary Logic
             const a = 0.5 * gravity;
@@ -752,7 +766,9 @@ const yardsPerNormalizedUnit = 10.0 / (scalePixelDist > 0 ? scalePixelDist : 0.1
         function setupVideoUI() {
             isVideoLoaded = true;
             document.getElementById('upload-placeholder').style.display = 'none';
-            document.getElementById('sys-buttons').style.display = 'flex';
+            // Show new video and reset buttons
+            document.getElementById('btn-reset').style.display = 'inline-block';
+            document.getElementById('btn-new').style.display = 'inline-block';
             zoomWrapper.style.display = 'inline-flex'; 
             document.getElementById('persistent-controls').style.display = 'flex';
             
