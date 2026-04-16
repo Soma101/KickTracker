@@ -94,7 +94,7 @@
             z-index: 10;
         }
 
-        /* NEW: Review Overlay Styles */
+        /* Review Overlay Styles */
         #review-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100dvh;
@@ -107,7 +107,7 @@
         #review-video {
             width: 100%;
             flex-grow: 1;
-            object-fit: contain; /* Ensures the whole video is visible for review */
+            object-fit: contain; 
             background: #1c1c1e;
         }
 
@@ -187,7 +187,7 @@
 
         async function setupCamera() {
             try {
-                // FIX: 'ideal' allows fallback to a laptop webcam if a rear camera doesn't exist
+                // 'ideal' allows fallback to a laptop webcam if a rear phone camera doesn't exist
                 mediaStream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
                     audio: false 
@@ -246,7 +246,7 @@
             }
         });
 
-        // NEW: Show the popup and load the video
+        // Show the popup and load the video for review
         function showReviewOverlay() {
             const finalType = recordedChunks[0]?.type || 'video/mp4';
             finalVideoBlob = new Blob(recordedChunks, { type: finalType });
@@ -262,7 +262,7 @@
             reviewVideo.play();
         }
 
-        // NEW: Retake button logic
+        // Retake button logic
         function retakeVideo() {
             // Stop preview
             reviewVideo.pause();
@@ -277,7 +277,7 @@
             cameraControls.style.display = 'flex';
         }
 
-        // MOVED: The IndexedDB save logic now lives in the Use Video button
+        // Use Video button logic (Saves and navigates to Analyzer)
         function useVideo() {
             useVideoBtn.innerText = "Saving...";
             useVideoBtn.disabled = true;
