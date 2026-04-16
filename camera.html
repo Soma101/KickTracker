@@ -24,6 +24,7 @@
         #camera-feed {
             width: 100%;
             flex-grow: 1;
+            min-height: 0; /* FIX: Allows video to shrink on short screens */
             object-fit: cover;
             background-color: #1c1c1e;
         }
@@ -97,7 +98,8 @@
         /* Review Overlay Styles */
         #review-overlay {
             position: fixed;
-            top: 0; left: 0; width: 100%; height: 100dvh;
+            top: 0; left: 0; bottom: 0; right: 0; /* FIX: Anchors exactly to the window */
+            width: 100%; 
             background: black;
             z-index: 100;
             display: none;
@@ -107,12 +109,14 @@
         #review-video {
             width: 100%;
             flex-grow: 1;
+            min-height: 0; /* FIX: Allows video to shrink on short screens */
             object-fit: contain; 
             background: #1c1c1e;
         }
 
         .review-controls {
             height: 120px;
+            flex-shrink: 0; /* FIX: Prevents controls from being squished */
             background: rgba(0, 0, 0, 0.8);
             display: flex;
             align-items: center;
