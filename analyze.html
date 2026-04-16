@@ -269,13 +269,11 @@
     <div id="report-modal">
         <div class="report-content">
             <h2 style="text-align:center; margin-top:0;">Actuarial Report</h2>
-            
             <div class="report-section">
                 <div class="report-header">Scoring Projection</div>
                 <div class="report-row"><span>Max Good Distance</span> <span class="text-green" id="rep-max">-- yds</span></div>
                 <div class="report-row"><span id="rep-past-label">Past -- yds</span> <span class="text-red" id="rep-miss">--</span></div>
             </div>
-
             <div class="report-section">
                 <div class="report-header">Flight Physics</div>
                 <div class="report-row"><span>Total Hang Time</span> <span id="rep-time" style="font-weight:bold;">--s</span></div>
@@ -283,20 +281,16 @@
                 <div class="report-row"><span>Launch Angle</span> <span id="rep-angle" class="text-orange">--°</span></div>
                 <div id="rep-warning" style="color:#ff9500; font-size:12px; margin-top:5px; display:none;"></div>
             </div>
-
             <div class="report-section">
                 <div class="report-header">Optics Engine Data</div>
                 <div class="report-row"><span>True Depth Travelled</span> <span id="rep-depth" style="color:#8e8e93;">-- yds</span></div>
             </div>
-
             <button class="btn-close-modal" onclick="document.getElementById('report-modal').style.display='none'">Close Report</button>
         </div>
     </div>
 
     <script>
-        // --- CONSTANTS & STATE ---
         const gravity = 32.17;
-        
         const video = document.getElementById('video-player');
         const canvas = document.getElementById('overlay');
         const ctx = canvas.getContext('2d');
@@ -307,11 +301,6 @@
         let isScrubbing = false;
         let activeReport = null;
 
-        // Field Settings
-        let hashPos = "Middle";
-        let gameLevel = "College";
-        
-        // Optics States
         let cameraDistance = 15.0;
         let ballSizeStart = 10.0;
         let ballSizeEnd = 10.0;
@@ -320,30 +309,19 @@
         let isAdjustingSize = false;
         let zoomLevel = 1.0;
         
-        // Point & Trace Tracking
         let scaleDots = []; 
         let activeTap = null;
         let activeTrace = []; 
         let isDrawingTrace = false;
 
-        let startPt = null;   // {time: sec, pos: {x,y}}
-        let ascentPt = null;
-        let peakPt = null;
-        let descentPt = null;
-        let endPt = null;
+        let startPt = null; let ascentPt = null; let peakPt = null; let descentPt = null; let endPt = null;
 
-        // --- EVENT LISTENERS (UI) ---
-        
         document.getElementById('file-upload').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
-            const url = URL.createObjectURL(file);
-            video.src = url;
+            video.src = URL.createObjectURL(file);
             video.load();
-            
-            video.onloadeddata = () => {
-                setupVideoUI();
-            };
+            video.onloadeddata = () => { setupVideoUI(); };
         });
 
         document.getElementById('cam-depth').addEventListener('input', (e) => {
@@ -354,39 +332,20 @@
         document.getElementById('zoom-level').addEventListener('change', (e) => {
             zoomLevel = parseFloat(e.target.value);
             zoomWrapper.style.transform = `scale(${zoomLevel})`;
-            if (activeTap) {
-                zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
-            } else {
-                zoomWrapper.style.transformOrigin = 'center center';
-            }
+            if (activeTap) zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
             draw(); 
         });
 
-        video.addEventListener('timeupdate', () => {
-            if (!isScrubbing) scrubber.value = video.currentTime;
-        });
+        video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
+        scrubber.addEventListener('input', (e) => { isScrubbing = true; video.currentTime = e.target.value; });
+        scrubber.addEventListener('change', () => { isScrubbing = false; });
 
-        scrubber.addEventListener('input', (e) => {
-            isScrubbing = true;
-            video.currentTime = e.target.value;
-        });
-
-        scrubber.addEventListener('change', () => {
-            isScrubbing = false;
-        });
-
-        // --- CANVAS GESTURES ---
         canvas.addEventListener('pointerdown', (e) => {
             const rect = canvas.getBoundingClientRect();
             const x = ((e.clientX - rect.left) / rect.width);
             const y = ((e.clientY - rect.top) / rect.height);
-
-            if (isAdjustingSize) {
-                isDrawingTrace = true;
-                activeTrace.push({x, y});
-            } else {
-                handleTap({x, y});
-            }
+            if (isAdjustingSize) { isDrawingTrace = true; activeTrace.push({x, y}); } 
+            else { handleTap({x, y}); }
             draw();
         });
 
@@ -399,435 +358,203 @@
             draw();
         });
 
-        canvas.addEventListener('pointerup', () => {
-            isDrawingTrace = false;
-            updateWorkflow();
-        });
-
-        canvas.addEventListener('pointercancel', () => {
-            isDrawingTrace = false;
-        });
+        canvas.addEventListener('pointerup', () => { isDrawingTrace = false; updateWorkflow(); });
 
         function handleTap(pt) {
             activeTap = pt;
-            if(zoomLevel > 1) {
-               zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
-            }
+            if(zoomLevel > 1) zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
             updateWorkflow();
         }
 
-        // --- DRAWING ---
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            const w = canvas.width;
-            const h = canvas.height;
+            const w = canvas.width; const h = canvas.height;
             const invZoom = 1.0 / zoomLevel;
 
-            // Scale Dots
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 5 * invZoom; 
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.shadowColor = 'black'; ctx.shadowBlur = 5 * invZoom;
+
             ctx.fillStyle = '#007aff';
             scaleDots.forEach(pt => {
-                ctx.beginPath();
-                ctx.arc(pt.x * w, pt.y * h, 7 * invZoom, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, 8 * invZoom, 0, Math.PI * 2); ctx.fill();
             });
 
-            // Trace
             if (isAdjustingSize && activeTrace.length > 0) {
-                ctx.strokeStyle = '#32ade6';
-                ctx.lineWidth = 2 * invZoom;
-                ctx.beginPath();
-                ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
-                for (let i = 1; i < activeTrace.length; i++) {
-                    ctx.lineTo(activeTrace[i].x * w, activeTrace[i].y * h);
-                }
+                ctx.beginPath(); ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
+                for (let i = 1; i < activeTrace.length; i++) ctx.lineTo(activeTrace[i].x * w, activeTrace[i].y * h);
                 ctx.stroke();
             }
 
-            // Crosshair
             if (activeTap && !isAdjustingSize) {
-                ctx.strokeStyle = '#32ade6';
-                ctx.lineWidth = 2 * invZoom;
-                const px = activeTap.x * w;
-                const py = activeTap.y * h;
-                const len = 10 * invZoom;
-                
-                ctx.beginPath();
-                ctx.moveTo(px, py - len); ctx.lineTo(px, py + len);
-                ctx.moveTo(px - len, py); ctx.lineTo(px + len, py);
-                ctx.stroke();
+                const px = activeTap.x * w; const py = activeTap.y * h; const len = 12 * invZoom;
+                ctx.beginPath(); ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); ctx.stroke();
             }
 
-            // Physics Markers
-            const dotRad = 5 * invZoom;
+            ctx.shadowBlur = 0;
+            const dotRad = 6 * invZoom;
             const drawMarker = (pt, color) => {
-                if (!pt) return;
-                ctx.fillStyle = color;
-                ctx.beginPath();
-                ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2);
-                ctx.fill();
+                if (!pt) return; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2); ctx.fill();
             };
-
-            drawMarker(startPt, '#34c759'); 
-            drawMarker(ascentPt, '#ffcc00'); 
-            drawMarker(peakPt, '#ff9500'); 
-            drawMarker(descentPt, '#ffcc00'); 
-            drawMarker(endPt, '#ff3b30'); 
-        }
-
-        // --- WORKFLOW & LOGIC ---
-        function updateResultsText(text) {
-            document.getElementById('results-text').innerText = text;
+            drawMarker(startPt, '#34c759'); drawMarker(ascentPt, '#ffcc00'); drawMarker(peakPt, '#ff9500'); drawMarker(descentPt, '#ffcc00'); drawMarker(endPt, '#ff3b30'); 
         }
 
         function updateWorkflow() {
             if (!isVideoLoaded) return;
-
             const btn = document.getElementById('btn-workflow');
             const traceControls = document.getElementById('trace-controls');
             const playControls = document.getElementById('playback-controls');
-            const camSlider = document.getElementById('cam-depth');
-
-            camSlider.disabled = (startPt !== null);
+            document.getElementById('cam-depth').disabled = (startPt !== null);
 
             if (isAdjustingSize) {
-                traceControls.style.display = 'flex';
-                playControls.style.display = 'none';
-                btn.style.display = 'none';
-                
+                traceControls.style.display = 'flex'; playControls.style.display = 'none'; btn.style.display = 'none';
                 const confirmBtn = document.getElementById('btn-confirm-trace');
                 confirmBtn.disabled = activeTrace.length === 0;
-                
-                if (startPt === null) {
-                    confirmBtn.innerText = "CONFIRM TRACE";
-                    confirmBtn.onclick = confirmStartTrace;
-                    confirmBtn.style.background = '#34c759';
-                } else if (endPt === null) {
-                    confirmBtn.innerText = "CONFIRM & ANALYZE";
-                    confirmBtn.onclick = confirmEndTrace;
-                    confirmBtn.style.background = '#ff3b30';
-                }
+                if (startPt === null) { confirmBtn.innerText = "CONFIRM TRACE"; confirmBtn.onclick = confirmStartTrace; confirmBtn.style.background = '#34c759'; } 
+                else { confirmBtn.innerText = "CONFIRM & ANALYZE"; confirmBtn.onclick = confirmEndTrace; confirmBtn.style.background = '#ff3b30'; }
                 return;
-            } else {
-                traceControls.style.display = 'none';
-                playControls.style.display = 'block';
-                btn.style.display = 'block';
-            }
-
+            } 
+            traceControls.style.display = 'none'; playControls.style.display = 'block'; btn.style.display = 'block';
             btn.disabled = false;
             
             if (scaleDots.length === 0) {
-                btn.innerText = "SET 1ST SCALE DOT";
-                btn.style.background = '#007aff';
-                btn.style.color = 'white';
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { 
-                    scaleDots.push(activeTap); 
-                    activeTap = null; 
-                    updateResultsText("Tap to place 2nd scale dot."); 
-                    updateWorkflow(); 
-                    draw(); 
-                };
+                btn.innerText = "SET 1ST SCALE DOT"; btn.style.background = '#007aff'; btn.disabled = (activeTap === null);
+                btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; document.getElementById('results-text').innerText = "Tap 2nd scale dot."; updateWorkflow(); draw(); };
             } else if (scaleDots.length === 1) {
-                btn.innerText = "SET 2ND SCALE DOT";
-                btn.style.background = '#007aff';
-                btn.style.color = 'white';
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { 
-                    scaleDots.push(activeTap); 
-                    activeTap = null; 
-                    updateResultsText("1. Scrub to Impact. Tap ball."); 
-                    updateWorkflow(); 
-                    draw(); 
-                };
+                btn.innerText = "SET 2ND SCALE DOT"; btn.style.background = '#007aff'; btn.disabled = (activeTap === null);
+                btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; document.getElementById('results-text').innerText = "1. Scrub to Impact. Tap ball."; updateWorkflow(); draw(); };
             } else if (startPt === null) {
-                btn.innerText = "LOCK IMPACT";
-                btn.style.background = '#34c759';
-                btn.style.color = 'white';
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { isAdjustingSize = true; updateResultsText("Trace the ball outline."); updateWorkflow(); };
+                btn.innerText = "LOCK IMPACT"; btn.style.background = '#34c759'; btn.disabled = (activeTap === null);
+                btn.onclick = () => { isAdjustingSize = true; document.getElementById('results-text').innerText = "Trace ball outline."; updateWorkflow(); };
             } else if (ascentPt === null) {
-                btn.innerText = "MARK ASCENT";
-                btn.style.background = '#ffcc00';
-                btn.style.color = 'black';
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { ascentPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateResultsText("3. Scrub to APEX. Tap ball."); updateWorkflow(); draw(); };
+                btn.innerText = "MARK ASCENT"; btn.style.background = '#ffcc00'; btn.style.color = 'black'; btn.disabled = (activeTap === null);
+                btn.onclick = () => { ascentPt = {time: video.currentTime, pos: activeTap}; activeTap = null; document.getElementById('results-text').innerText = "3. Scrub to APEX. Tap ball."; updateWorkflow(); draw(); };
             } else if (peakPt === null) {
-                btn.innerText = "MARK APEX";
-                btn.style.background = '#ff9500';
-                btn.style.color = 'white';
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { peakPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateResultsText("4. Scrub to halfway DOWN. Tap ball."); updateWorkflow(); draw(); };
+                btn.innerText = "MARK APEX"; btn.style.background = '#ff9500'; btn.style.color = 'white'; btn.disabled = (activeTap === null);
+                btn.onclick = () => { peakPt = {time: video.currentTime, pos: activeTap}; activeTap = null; document.getElementById('results-text').innerText = "4. Scrub to half DOWN. Tap ball."; updateWorkflow(); draw(); };
             } else if (descentPt === null) {
-                btn.innerText = "MARK DESCENT";
-                btn.style.background = '#ffcc00';
-                btn.style.color = 'black';
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { descentPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateResultsText("5. Scrub to LANDING. Tap ball."); updateWorkflow(); draw(); };
+                btn.innerText = "MARK DESCENT"; btn.style.background = '#ffcc00'; btn.style.color = 'black'; btn.disabled = (activeTap === null);
+                btn.onclick = () => { descentPt = {time: video.currentTime, pos: activeTap}; activeTap = null; document.getElementById('results-text').innerText = "5. Scrub to LANDING. Tap ball."; updateWorkflow(); draw(); };
             } else if (endPt === null) {
-                btn.innerText = "LOCK LANDING";
-                btn.style.background = '#ff3b30';
-                btn.style.color = 'white';
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { isAdjustingSize = true; updateResultsText("Trace the landing ball outline."); updateWorkflow(); };
+                btn.innerText = "LOCK LANDING"; btn.style.background = '#ff3b30'; btn.disabled = (activeTap === null);
+                btn.onclick = () => { isAdjustingSize = true; document.getElementById('results-text').innerText = "Trace landing outline."; updateWorkflow(); };
             } else {
-                btn.innerText = "VIEW REPORT";
-                btn.style.background = '#007aff';
-                btn.style.color = 'white';
-                btn.onclick = showReportModal;
+                btn.innerText = "VIEW REPORT"; btn.style.background = '#007aff'; btn.onclick = showReportModal;
             }
         }
 
-        // --- OPTICS MATH ---
         function calculateTraceSize() {
             if (activeTrace.length === 0) return 10.0;
-            const xs = activeTrace.map(pt => pt.x * canvas.width);
-            const ys = activeTrace.map(pt => pt.y * canvas.height);
-            const maxX = Math.max(...xs), minX = Math.min(...xs);
-            const maxY = Math.max(...ys), minY = Math.min(...ys);
-            return Math.sqrt(Math.max((maxX - minX), 2.0) * Math.max((maxY - minY), 2.0));
+            const xs = activeTrace.map(pt => pt.x * canvas.width); const ys = activeTrace.map(pt => pt.y * canvas.height);
+            return Math.sqrt(Math.max((Math.max(...xs) - Math.min(...xs)), 2.0) * Math.max((Math.max(...ys) - Math.min(...ys)), 2.0));
         }
 
-        // Calculates the aspect ratio (stretch) of the bounding box
         function calculateAspectRatio() {
             if (activeTrace.length === 0) return 1.0;
-            const xs = activeTrace.map(pt => pt.x * canvas.width);
-            const ys = activeTrace.map(pt => pt.y * canvas.height);
-            const width = Math.max((Math.max(...xs) - Math.min(...xs)), 1.0);
-            const height = Math.max((Math.max(...ys) - Math.min(...ys)), 1.0);
-            return Math.max(width, height) / Math.min(width, height);
+            const xs = activeTrace.map(pt => pt.x * canvas.width); const ys = activeTrace.map(pt => pt.y * canvas.height);
+            const w = Math.max((Math.max(...xs) - Math.min(...xs)), 1.0); const h = Math.max((Math.max(...ys) - Math.min(...ys)), 1.0);
+            return Math.max(w, h) / Math.min(w, h);
         }
 
         function confirmStartTrace() {
-            ballSizeStart = calculateTraceSize();
-            startAspectRatio = calculateAspectRatio(); // Save initial shape
-            startPt = {time: video.currentTime, pos: activeTap};
-            activeTap = null; activeTrace = []; isAdjustingSize = false; 
-            document.getElementById('zoom-level').value = "1";
-            zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`;
-            updateResultsText("2. Scrub to halfway UP. Tap ball.");
-            updateWorkflow(); draw();
+            ballSizeStart = calculateTraceSize(); startAspectRatio = calculateAspectRatio();
+            startPt = {time: video.currentTime, pos: activeTap}; activeTap = null; activeTrace = []; isAdjustingSize = false; 
+            zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`; document.getElementById('results-text').innerText = "2. Scrub to half UP. Tap ball."; updateWorkflow(); draw();
         }
 
         function confirmEndTrace() {
-            ballSizeEnd = calculateTraceSize();
-            endAspectRatio = calculateAspectRatio(); // Save landing shape for blur detection
-            endPt = {time: video.currentTime, pos: activeTap};
-            activeTap = null; activeTrace = []; isAdjustingSize = false;
-            document.getElementById('zoom-level').value = "1";
-            zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`;
-            calculateOpticsPhysics();
-            updateWorkflow(); draw();
+            ballSizeEnd = calculateTraceSize(); endAspectRatio = calculateAspectRatio();
+            endPt = {time: video.currentTime, pos: activeTap}; activeTap = null; activeTrace = []; isAdjustingSize = false;
+            zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`; calculateOpticsPhysics(); updateWorkflow(); draw();
         }
 
         function calculateOpticsPhysics() {
             if (!startPt || !peakPt || !endPt) return;
+            const totalTime = Math.abs(endPt.time - startPt.time); const timeToPeak = Math.abs(peakPt.time - startPt.time);
+            const v_y0_ft = gravity * timeToPeak; const peakH_ft = 0.5 * gravity * (timeToPeak * timeToPeak);
 
-            const totalTime = Math.abs(endPt.time - startPt.time);
-            const timeToPeak = Math.abs(peakPt.time - startPt.time);
-
-            // 1. Vertical Physics
-            const v_y0_ft = gravity * timeToPeak;
-            const peakH_ft = 0.5 * gravity * (timeToPeak * timeToPeak);
-
-            // 2. Optical Depth Physics
             const rawRatio = ballSizeStart / ballSizeEnd;
-
-            // DYNAMIC BLUR ENGINE
-            let dynamicExponent = 1.0; // Baseline: no blur compensation
-            if (endAspectRatio > 1.6) {
-                // If trace is stretched beyond a normal 1.6 football ratio, scale the exponent up
-                let blurSeverity = (endAspectRatio - 1.6) * 0.15;
-                dynamicExponent = 1.0 + Math.min(blurSeverity, 0.35); // Caps at 1.35 max
-            }
+            let dynamicExponent;
+            if (endAspectRatio <= 1.7) { dynamicExponent = 1.18; } 
+            else { dynamicExponent = Math.min(1.20 + (endAspectRatio - 1.7) * 0.10, 1.35); }
 
             const blurCompensatedRatio = Math.pow(rawRatio, dynamicExponent);
-
             let zDistanceYards = cameraDistance * (blurCompensatedRatio - 1.0);
-
             const minAngleRad = 20.0 * Math.PI / 180.0;
             const max_Vz_ft = v_y0_ft / Math.tan(minAngleRad);
             const max_Z_yards = (max_Vz_ft * totalTime) / 3.0;
+            if (zDistanceYards > max_Z_yards) zDistanceYards = max_Z_yards;
 
-            if (zDistanceYards > max_Z_yards) { zDistanceYards = max_Z_yards; }
-
-            const zDistanceFeet = zDistanceYards * 3.0;
-            const v_z0_ft = zDistanceFeet / (totalTime > 0 ? totalTime : 1.0);
+            const v_z0_ft = (zDistanceYards * 3.0) / (totalTime > 0 ? totalTime : 1.0);
             const v_z0_yards = v_z0_ft / 3.0;
 
-            // 3. Lateral Physics
-            const points = [startPt, ascentPt, peakPt, descentPt].filter(p => p !== null);
-            if (points.length < 2) return;
-
             const p1 = scaleDots[0], p2 = scaleDots[1];
-            
-            // EXACT MATCH: Calculate using normalized units, not raw canvas pixels
-            const scalePixelDist = Math.sqrt(
-                Math.pow((p2.x - p1.x), 2) +
-                Math.pow((p2.y - p1.y), 2)
-            );
-            
+            const scalePixelDist = Math.sqrt(Math.pow((p2.x - p1.x), 2) + Math.pow((p2.y - p1.y), 2));
             const yardsPerNormalizedUnit = 10.0 / (scalePixelDist > 0 ? scalePixelDist : 0.1);
-
-            const startX = points[0].pos.x;
-            let weightedDrift = 0.0;
-            let totalWeight = 0.0;
-
-            for (let i = 1; i < points.length; i++) {
-                const pt = points[i];
-                const dx = pt.pos.x - startX;
-                const tNorm = (pt.time - startPt.time) / (totalTime > 0 ? totalTime : 1.0);
-                const weight = Math.max(0.2, tNorm);
-                weightedDrift += dx * weight;
-                totalWeight += weight;
+            const pts = [startPt, ascentPt, peakPt, descentPt].filter(p => p !== null);
+            const startX = pts[0].pos.x; let weightedDrift = 0.0, totalWeight = 0.0;
+            for (let i = 1; i < pts.length; i++) {
+                const dx = pts[i].pos.x - startX; const tNorm = (pts[i].time - startPt.time) / totalTime;
+                const weight = Math.max(0.2, tNorm); weightedDrift += dx * weight; totalWeight += weight;
             }
+            const v_x_yards = (weightedDrift / totalWeight) * yardsPerNormalizedUnit / totalTime;
 
-            const avgDriftNormalized = weightedDrift / (totalWeight > 0 ? totalWeight : 1.0);
-            const trueDriftYards = avgDriftNormalized * yardsPerNormalizedUnit;
-            const v_x_yards = trueDriftYards / (totalTime > 0 ? totalTime : 1.0);
+            const a = 0.5 * gravity, b = -v_y0_ft, c = 10.0;
+            const disc = (b * b) - (4 * a * c);
+            const crossbarTime = disc > 0 ? (-b + Math.sqrt(disc)) / (2 * a) : totalTime;
+            const heightLimit = v_z0_yards * crossbarTime;
+            const timeWide = Math.abs(v_x_yards) > 0.01 ? 3.11 / Math.abs(v_x_yards) : Infinity;
+            const maxGoodDistance = Math.min(heightLimit, v_z0_yards * timeWide);
 
-            // 4. Boundary Logic
-            const a = 0.5 * gravity;
-            const b = -v_y0_ft;
-            const c = 10.0;
-
-            const discriminant = (b * b) - (4 * a * c);
-            let crossbarTime = totalTime;
-            if (discriminant > 0) {
-                crossbarTime = (-b + Math.sqrt(discriminant)) / (2 * a);
-            }
-
-            const distanceHeightLimit = v_z0_yards * crossbarTime;
-
-            let timeItGoesWide = Infinity;
-            if (Math.abs(v_x_yards) > 0.01) { timeItGoesWide = 3.11 / Math.abs(v_x_yards); }
-
-            const distanceAccuracyLimit = v_z0_yards * timeItGoesWide;
-
-            // 5. Launch Angle
-            let launchAngleRad = Math.atan2(v_y0_ft, v_z0_ft > 0 ? v_z0_ft : 0.001);
-            let launchAngleDeg = launchAngleRad * (180.0 / Math.PI);
-
-            let angleWarning = null;
-            if (launchAngleDeg < 15.0) {
-                angleWarning = `⚠️ Angle ${launchAngleDeg.toFixed(1)}° is unusually flat — check camera depth setting`;
-            } else if (launchAngleDeg > 65.0) {
-                angleWarning = `⚠️ Angle ${launchAngleDeg.toFixed(1)}° is unusually steep — check ball tracing points`;
-            }
-
-            // 6. Final Result
-            const maxGoodDistance = Math.min(distanceHeightLimit, distanceAccuracyLimit);
-            let missType = "Falls Short";
-            if (distanceAccuracyLimit < distanceHeightLimit) {
-                missType = v_x_yards > 0 ? "Misses Right" : "Misses Left";
-            }
-
-            launchAngleRad = Math.atan(v_y0_ft / (v_z0_ft > 0 ? v_z0_ft : 0.1));
-
+            const launchAngleDeg = Math.atan2(v_y0_ft, (v_z0_ft > 0 ? v_z0_ft : 0.001)) * (180.0 / Math.PI);
             activeReport = {
-                date: new Date().toISOString(),
-                totalTime: totalTime,
-                timeToPeak: timeToPeak,
-                distanceYards: zDistanceYards,
-                peakHeightFeet: peakH_ft,
-                launchAngle: launchAngleDeg,
-                horizontalVelocity: v_z0_ft,
-                maxGoodDistance: maxGoodDistance,
-                missType: missType,
-                angleWarning: angleWarning
+                date: new Date().toISOString(), totalTime, timeToPeak, distanceYards: zDistanceYards, peakHeightFeet: peakH_ft,
+                launchAngle: launchAngleDeg, horizontalVelocity: v_z0_ft, maxGoodDistance, missType: (v_z0_yards * timeWide < heightLimit) ? (v_x_yards > 0 ? "Misses Right" : "Misses Left") : "Falls Short",
+                angleWarning: (launchAngleDeg < 15) ? `⚠️ Flat Ang: ${launchAngleDeg.toFixed(1)}°` : (launchAngleDeg > 65 ? `⚠️ Steep Ang: ${launchAngleDeg.toFixed(1)}°` : null)
             };
-
-            // Save to localStorage
-            let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
-            history.unshift(activeReport); // Puts newest at the top
-            localStorage.setItem('kickHistory', JSON.stringify(history));
-
+            let history = JSON.parse(localStorage.getItem('kickHistory')) || []; history.unshift(activeReport); localStorage.setItem('kickHistory', JSON.stringify(history));
             showReportModal();
-        }
-
-        // --- UTILS & PLAYBACK ---
-        function togglePlay() {
-            if (video.paused) { video.play(); document.getElementById('btn-playpause').innerText = '⏸'; } 
-            else { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; }
-        }
-
-        function stepFrame(frames) {
-            video.pause(); document.getElementById('btn-playpause').innerText = '▶';
-            video.currentTime += (1/30) * frames;
-        }
-
-        function resetAll() {
-            scaleDots = []; activeTap = null; isAdjustingSize = false; activeTrace = [];
-            startPt = null; ascentPt = null; peakPt = null; descentPt = null; endPt = null;
-            activeReport = null; 
-            document.getElementById('zoom-level').value = "1";
-            zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`;
-            updateResultsText("Set Camera Distance. Tap to place 1st scale dot.");
-            video.pause(); video.currentTime = 0; scrubber.value = 0;
-            document.getElementById('btn-playpause').innerText = '▶';
-            updateWorkflow(); draw();
         }
 
         function showReportModal() {
             if (!activeReport) return;
-            const maxGood = Math.max(0, activeReport.maxGoodDistance);
-            document.getElementById('rep-max').innerText = `≤ ${Math.floor(maxGood)} yds`;
-            document.getElementById('rep-past-label').innerText = `Past ${Math.floor(maxGood)} yds`;
+            const mg = Math.max(0, activeReport.maxGoodDistance);
+            document.getElementById('rep-max').innerText = `≤ ${Math.floor(mg)} yds`;
+            document.getElementById('rep-past-label').innerText = `Past ${Math.floor(mg)} yds`;
             document.getElementById('rep-miss').innerText = activeReport.missType;
             document.getElementById('rep-time').innerText = `${activeReport.totalTime.toFixed(2)}s`;
             document.getElementById('rep-height').innerText = `${activeReport.peakHeightFeet.toFixed(1)} ft`;
             document.getElementById('rep-angle').innerText = `${activeReport.launchAngle.toFixed(1)}°`;
-            
-            const warnEl = document.getElementById('rep-warning');
-            if (activeReport.angleWarning) { warnEl.innerText = activeReport.angleWarning; warnEl.style.display = 'block'; } 
-            else { warnEl.style.display = 'none'; }
-            
+            const warn = document.getElementById('rep-warning');
+            if (activeReport.angleWarning) { warn.innerText = activeReport.angleWarning; warn.style.display = 'block'; } else warn.style.display = 'none';
             document.getElementById('rep-depth').innerText = `${activeReport.distanceYards.toFixed(1)} yds`;
             document.getElementById('report-modal').style.display = 'flex';
         }
 
-        function setupVideoUI() {
-            isVideoLoaded = true;
-            document.getElementById('upload-placeholder').style.display = 'none';
-            // Show new video and reset buttons
-            document.getElementById('btn-reset').style.display = 'inline-block';
-            document.getElementById('btn-new').style.display = 'inline-block';
-            zoomWrapper.style.display = 'inline-flex'; 
-            document.getElementById('persistent-controls').style.display = 'flex';
-            
-            setTimeout(() => {
-                const rect = video.getBoundingClientRect();
-                canvas.width = rect.width;
-                canvas.height = rect.height;
-                draw();
-            }, 50);
-            
-            scrubber.max = video.duration;
-            resetAll();
-            updateWorkflow();
+        function togglePlay() { if (video.paused) { video.play(); document.getElementById('btn-playpause').innerText = '⏸'; } else { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; } }
+        function stepFrame(f) { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; video.currentTime += (1/30) * f; }
+        function resetAll() {
+            scaleDots = []; activeTap = null; isAdjustingSize = false; activeTrace = []; startPt = null; ascentPt = null; peakPt = null; descentPt = null; endPt = null; activeReport = null;
+            zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`; document.getElementById('results-text').innerText = "Set Depth. Tap 1st scale dot.";
+            video.pause(); video.currentTime = 0; scrubber.value = 0; updateWorkflow(); draw();
         }
 
-        // --- INDEXED DB LISTENER ---
+        function setupVideoUI() {
+            isVideoLoaded = true; document.getElementById('upload-placeholder').style.display = 'none';
+            document.getElementById('btn-reset').style.display = 'inline-block'; document.getElementById('btn-new').style.display = 'inline-block';
+            zoomWrapper.style.display = 'inline-flex'; document.getElementById('persistent-controls').style.display = 'flex';
+            setTimeout(() => { canvas.width = video.getBoundingClientRect().width; canvas.height = video.getBoundingClientRect().height; draw(); }, 50);
+            scrubber.max = video.duration; resetAll(); updateWorkflow();
+        }
+
         window.onload = function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('load') === 'latest') {
-                const request = indexedDB.open('KickTrackerDB', 1);
-                request.onsuccess = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains('videos')) return;
-                    
-                    const transaction = db.transaction('videos', 'readonly');
-                    const store = transaction.objectStore('videos');
-                    const getRequest = store.get('latest_kick');
-                    
-                    getRequest.onsuccess = () => {
-                        if (getRequest.result) {
-                            const videoURL = URL.createObjectURL(getRequest.result);
-                            video.src = videoURL;
-                            video.load();
-                            video.onloadeddata = setupVideoUI;
-                        }
-                    };
+            if (new URLSearchParams(window.location.search).get('load') === 'latest') {
+                const req = indexedDB.open('KickTrackerDB', 1);
+                req.onsuccess = (e) => {
+                    const db = e.target.result; if (!db.objectStoreNames.contains('videos')) return;
+                    const get = db.transaction('videos', 'readonly').objectStore('videos').get('latest_kick');
+                    get.onsuccess = () => { if (get.result) { video.src = URL.createObjectURL(get.result); video.load(); video.onloadeddata = setupVideoUI; } };
                 };
             }
         };
