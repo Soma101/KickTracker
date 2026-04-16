@@ -3,98 +3,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KickTracker Web</title>
+    <title>Kick Tracker</title>
     <style>
-        /* Basic styling to center the camera and buttons */
+        /* Base styling translates the default SwiftUI environment */
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
-            background-color: #f0f0f5;
+            justify-content: center;
+            height: 100vh;
             margin: 0;
-            padding: 20px;
+            background-color: #ffffff;
+            text-align: center;
+        }
+
+        /* Title Section translates the text and font weights */
+        h1 {
+            font-size: 40px;
+            font-weight: 900; /* Translates weight: .black */
+            margin: 0 0 10px 0;
+        }
+        h2 {
+            font-size: 18px;
+            font-weight: 600; /* Translates .headline */
+            color: #8e8e93; /* Translates .secondary */
+            margin: 0 0 50px 0;
+        }
+
+        /* Button Container translates the VStack(spacing: 20) */
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 100%;
+            max-width: 250px;
+        }
+
+        /* Button base styling translates the common modifiers */
+        button {
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            padding: 16px;
+            border: none;
+            border-radius: 12px; /* Translates .cornerRadius(12) */
+            cursor: pointer;
+            width: 100%;
+        }
+
+        /* Specific button colors translate the SwiftUI Color modifiers */
+        #btn-record { background-color: #ff3b30; } /* Color.red */
+        #btn-analyze { background-color: #007aff; } /* Color.blue */
+        #btn-history { background-color: #34c759; } /* Color.green */
+        
+        /* Camera View acts as the .fullScreenCover */
+        #camera-view {
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
         #camera-feed {
             width: 100%;
-            max-width: 600px;
-            background-color: #000;
-            border-radius: 12px;
-            margin-bottom: 20px;
+            height: 100%;
+            object-fit: cover; /* Translates .ignoresSafeArea() */
         }
-        .menu-container {
-            display: flex;
-            gap: 15px;
-        }
-        button {
-            padding: 15px 30px;
-            font-size: 16px;
-            font-weight: bold;
+        #btn-close-camera {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.3);
             color: white;
-            background-color: #007aff;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #005bb5;
+            width: auto;
+            padding: 10px 20px;
+            z-index: 10;
         }
     </style>
 </head>
 <body>
 
-    <h1>KickTracker</h1>
-    
-    <video id="camera-feed" autoplay playsinline></video>
+    <div id="home-view">
+        <h1>Kick Tracker</h1>
+        <h2>Optics & Physics Engine</h2>
+        
+        <div class="button-container">
+            <button id="btn-record">Record video</button>
+            <button id="btn-analyze">Analyze Video</button>
+            <button id="btn-history">Kick History</button>
+        </div>
+    </div>
 
-    <div class="menu-container">
-        <button id="btn-record">Record Kick</button>
-        <button id="btn-analyze">Analyze Video</button>
-        <button id="btn-history">History</button>
+    <div id="camera-view">
+        <button id="btn-close-camera">Close</button>
+        <video id="camera-feed" autoplay playsinline></video>
     </div>
 
     <script>
-        // --- Core Application Logic ---
-
+        // DOM Elements
+        const homeView = document.getElementById('home-view');
+        const cameraView = document.getElementById('camera-view');
         const videoElement = document.getElementById('camera-feed');
-        const recordButton = document.getElementById('btn-record');
-        const analyzeButton = document.getElementById('btn-analyze');
-        const historyButton = document.getElementById('btn-history');
+        
+        const recordBtn = document.getElementById('btn-record');
+        const analyzeBtn = document.getElementById('btn-analyze');
+        const historyBtn = document.getElementById('btn-history');
+        const closeCameraBtn = document.getElementById('btn-close-camera');
 
-        // 1. Initialize the Camera
-        async function startCamera() {
+        let stream = null;
+
+        // Translates: Button(action: { showCamera = true })
+        recordBtn.addEventListener('click', async () => {
+            // Hide the home view and show the camera view
+            homeView.style.display = 'none';
+            cameraView.style.display = 'flex';
+            
             try {
-                // Requests access to the rear camera if available
-                const stream = await navigator.mediaDevices.getUserMedia({ 
+                // Request back camera
+                stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "environment" } 
                 });
-                // Streams the camera feed directly into the HTML video element
                 videoElement.srcObject = stream;
             } catch (error) {
-                console.error("Camera access denied or unavailable:", error);
-                alert("Please enable camera access to track kicks.");
+                console.error("Camera access denied:", error);
+                alert("Please enable camera access.");
+                closeCamera();
+            }
+        });
+
+        // Translates dismissing the fullScreenCover
+        function closeCamera() {
+            homeView.style.display = 'flex';
+            cameraView.style.display = 'none';
+            // Stop the camera hardware when closed to save battery
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
             }
         }
+        
+        closeCameraBtn.addEventListener('click', closeCamera);
 
-        // 2. Button Event Listeners
-        recordButton.addEventListener('click', () => {
-            console.log("Record Kick initialized.");
-            // Logic to capture video frames goes here
+        // Translates: NavigationLink(destination: ContentView())
+        analyzeBtn.addEventListener('click', () => {
+            alert("This will navigate to the Analyze Video page.");
         });
 
-        analyzeButton.addEventListener('click', () => {
-            console.log("Analyze Video initialized.");
-            // Logic to calculate launch angles and trajectory goes here
+        // Translates: NavigationLink(destination: KickHistoryView())
+        historyBtn.addEventListener('click', () => {
+            alert("This will navigate to the Kick History page.");
         });
-
-        historyButton.addEventListener('click', () => {
-            console.log("Loading kick history...");
-            // Logic to pull data from localStorage goes here
-        });
-
-        // Start the camera as soon as the page loads
-        startCamera();
     </script>
-
 </body>
 </html>
