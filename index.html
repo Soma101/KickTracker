@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KickTracker Web</title>
+    <style>
+        /* Basic styling to center the camera and buttons */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f5;
+            margin: 0;
+            padding: 20px;
+        }
+        #camera-feed {
+            width: 100%;
+            max-width: 600px;
+            background-color: #000;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        .menu-container {
+            display: flex;
+            gap: 15px;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            background-color: #007aff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #005bb5;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>KickTracker</h1>
+    
+    <video id="camera-feed" autoplay playsinline></video>
+
+    <div class="menu-container">
+        <button id="btn-record">Record Kick</button>
+        <button id="btn-analyze">Analyze Video</button>
+        <button id="btn-history">History</button>
+    </div>
+
+    <script>
+        // --- Core Application Logic ---
+
+        const videoElement = document.getElementById('camera-feed');
+        const recordButton = document.getElementById('btn-record');
+        const analyzeButton = document.getElementById('btn-analyze');
+        const historyButton = document.getElementById('btn-history');
+
+        // 1. Initialize the Camera
+        async function startCamera() {
+            try {
+                // Requests access to the rear camera if available
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" } 
+                });
+                // Streams the camera feed directly into the HTML video element
+                videoElement.srcObject = stream;
+            } catch (error) {
+                console.error("Camera access denied or unavailable:", error);
+                alert("Please enable camera access to track kicks.");
+            }
+        }
+
+        // 2. Button Event Listeners
+        recordButton.addEventListener('click', () => {
+            console.log("Record Kick initialized.");
+            // Logic to capture video frames goes here
+        });
+
+        analyzeButton.addEventListener('click', () => {
+            console.log("Analyze Video initialized.");
+            // Logic to calculate launch angles and trajectory goes here
+        });
+
+        historyButton.addEventListener('click', () => {
+            console.log("Loading kick history...");
+            // Logic to pull data from localStorage goes here
+        });
+
+        // Start the camera as soon as the page loads
+        startCamera();
+    </script>
+
+</body>
+</html>
