@@ -8,55 +8,214 @@
     <meta name="apple-mobile-web-app-title" content="KickTracker">
     <title>Record Kick</title>
     <style>
-        body { margin: 0; background-color: black; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        #camera-feed { width: 100%; height: 100%; object-fit: cover; }
-        .controls { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: center; gap: 20px; }
-        button { padding: 15px 30px; font-size: 18px; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; }
-        #btn-close { background-color: rgba(255, 255, 255, 0.3); color: white; }
-        #btn-capture { background-color: #ff3b30; color: white; }
+        body {
+            margin: 0;
+            background-color: black;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100dvh; /* Dynamic viewport for iOS */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            box-sizing: border-box;
+            font-family: -apple-system, sans-serif;
+        }
+
+        #camera-feed {
+            width: 100%;
+            flex-grow: 1;
+            object-fit: cover;
+            background-color: #1c1c1e;
+        }
+
+        .camera-controls {
+            position: absolute;
+            bottom: env(safe-area-inset-bottom, 20px);
+            width: 100%;
+            height: 120px;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding-bottom: 20px;
+        }
+
+        .btn-cancel {
+            color: white;
+            font-size: 18px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 10px;
+        }
+
+        .btn-record-wrapper {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: 4px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .btn-record-inner {
+            width: 54px;
+            height: 54px;
+            background-color: #ff3b30;
+            border-radius: 50%;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .is-recording .btn-record-inner {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px; 
+        }
+
+        #status-text {
+            position: absolute;
+            top: env(safe-area-inset-top, 40px);
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            display: none;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
 
-    <video id="camera-feed" autoplay playsinline></video>
+    <div id="status-text">Recording... <span id="timer">00:00</span></div>
+    <video id="camera-feed" autoplay playsinline muted></video>
     
-    <div class="controls">
-        <button id="btn-close" onclick="closeCamera()">Cancel</button>
-        <button id="btn-capture">Capture</button>
+    <div class="camera-controls">
+        <button class="btn-cancel" onclick="cancelCamera()">Cancel</button>
+        
+        <div class="btn-record-wrapper" id="btn-record">
+            <div class="btn-record-inner"></div>
+        </div>
+        
+        <div style="width: 60px;"></div> 
     </div>
 
     <script>
         const videoElement = document.getElementById('camera-feed');
-        let mediaStream = null;
+        const recordBtn = document.getElementById('btn-record');
+        const statusText = document.getElementById('status-text');
+        const timerText = document.getElementById('timer');
 
-        // Equivalent to .onAppear()
-        async function startCamera() {
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let isRecording = false;
+        let timerInterval = null;
+        let secondsRecorded = 0;
+
+        async function setupCamera() {
             try {
                 mediaStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment" } 
+                    video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+                    audio: false 
                 });
                 videoElement.srcObject = mediaStream;
+                
+                // FIX: Let iOS dictate its native format (usually video/mp4) instead of forcing WebM
+                mediaRecorder = new MediaRecorder(mediaStream);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        recordedChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = saveAndNavigate;
+
             } catch (error) {
-                alert("Camera access is required to track kicks.");
+                console.error("Camera access error:", error);
+                alert("Please enable camera permissions to record kicks.");
             }
         }
 
-        // Equivalent to .onDisappear()
-        function closeCamera() {
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
+        recordBtn.addEventListener('click', () => {
+            if (!isRecording) {
+                recordedChunks = [];
+                // Ask recorder to output data every 500ms (Ensures iOS captures frames smoothly)
+                mediaRecorder.start(500);
+                isRecording = true;
+                
+                recordBtn.classList.add('is-recording');
+                statusText.style.display = 'block';
+                statusText.innerHTML = 'Recording... <span id="timer">00:00</span>';
+                const dynamicTimer = document.getElementById('timer');
+                
+                secondsRecorded = 0;
+                timerInterval = setInterval(() => {
+                    secondsRecorded++;
+                    let mins = String(Math.floor(secondsRecorded / 60)).padStart(2, '0');
+                    let secs = String(secondsRecorded % 60).padStart(2, '0');
+                    dynamicTimer.innerText = `${mins}:${secs}`;
+                }, 1000);
+
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                
+                recordBtn.classList.remove('is-recording');
+                clearInterval(timerInterval);
+                statusText.innerText = "Saving video...";
             }
+        });
+
+        function saveAndNavigate() {
+            // FIX: Pull the exact format type that iOS used directly from the chunks
+            const finalType = recordedChunks[0]?.type || 'video/mp4';
+            const videoBlob = new Blob(recordedChunks, { type: finalType });
+
+            const request = indexedDB.open('KickTrackerDB', 1);
+
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('videos')) {
+                    db.createObjectStore('videos');
+                }
+            };
+
+            request.onsuccess = (e) => {
+                const db = e.target.result;
+                const transaction = db.transaction('videos', 'readwrite');
+                const store = transaction.objectStore('videos');
+                
+                store.put(videoBlob, 'latest_kick');
+                
+                transaction.oncomplete = () => {
+                    shutdownCamera();
+                    window.location.href = 'analyze.html?load=latest';
+                };
+            };
+
+            request.onerror = (e) => {
+                console.error("Failed to save video to database:", e);
+                alert("Failed to save video.");
+            };
+        }
+
+        function cancelCamera() {
+            shutdownCamera();
             window.location.href = 'index.html';
         }
 
-        document.getElementById('btn-capture').addEventListener('click', () => {
-            // Logic to save the video file or frames goes here
-            alert("Video captured! Navigating to analysis...");
-            closeCamera(); 
-            window.location.href = 'analyze.html'; // Move to next view
-        });
+        function shutdownCamera() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+        }
 
-        startCamera();
+        setupCamera();
     </script>
 </body>
 </html>
