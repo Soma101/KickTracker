@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kick History</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; padding: 20px; background-color: #f2f2f7; }
+        h1 { text-align: center; }
+        .history-list { list-style: none; padding: 0; max-width: 400px; margin: 0 auto; }
+        .history-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 12px; display: flex; justify-content: space-between; font-weight: bold; }
+        button { padding: 12px 24px; font-size: 16px; font-weight: bold; background-color: #007aff; color: white; border: none; border-radius: 8px; cursor: pointer; display: block; margin: 30px auto; }
+    </style>
+</head>
+<body>
+
+    <h1>Kick History</h1>
+    
+    <ul class="history-list" id="history-container"></ul>
+
+    <button onclick="window.location.href='index.html'">Back to Menu</button>
+
+    <script>
+        // Equivalent to Swift's .onAppear() fetching data
+        function loadHistory() {
+            const container = document.getElementById('history-container');
+            const history = JSON.parse(localStorage.getItem('kickHistory')) || [];
+
+            if (history.length === 0) {
+                container.innerHTML = "<p style='text-align:center; color:#8e8e93;'>No kicks recorded yet.</p>";
+                return;
+            }
+
+            // Equivalent to Swift's ForEach
+            history.reverse().forEach(kick => {
+                const li = document.createElement('li');
+                li.className = 'history-item';
+                li.innerHTML = `<span>${kick.date}</span> <span>${kick.angle}° | ${kick.velocity}mph</span>`;
+                container.appendChild(li);
+            });
+        }
+
+        loadHistory();
+    </script>
+</body>
+</html>
