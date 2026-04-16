@@ -32,6 +32,7 @@
             cursor: pointer;
         }
         
+        #btn-home { background: #007aff; color: white; }
         #btn-reset { background: #3a3a3c; color: white; }
         #btn-new { background: #ff3b30; color: white; }
         #file-upload { display: none; }
@@ -61,6 +62,7 @@
             font-family: monospace;
             font-size: 14px;
             min-height: 20px;
+            text-align: center;
         }
 
         .viewport-container {
@@ -174,12 +176,12 @@
             margin-bottom: 15px;
         }
         .report-header { font-weight: bold; margin-bottom: 10px; font-size: 14px; color: #8e8e93; }
-        .report-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 16px; }
+        .report-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 16px; border-bottom: 1px solid #3a3a3c; padding-bottom: 8px;}
+        .report-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         .text-green { color: #34c759; font-weight: bold; }
         .text-red { color: #ff3b30; font-weight: bold; }
         .text-orange { color: #ff9500; font-weight: bold; }
-        .btn-close-modal { width: 100%; padding: 14px; background: #007aff; color: white; border: none; border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer; }
-
+        .btn-close-modal { width: 100%; padding: 14px; background: #007aff; color: white; border: none; border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -306,7 +308,7 @@
         let zoomLevel = 1.0;
         
         // Point & Trace Tracking
-        let scaleDots = []; // {x, y} normalized 0-1
+        let scaleDots = []; 
         let activeTap = null;
         let activeTrace = []; 
         let isDrawingTrace = false;
@@ -327,20 +329,7 @@
             video.load();
             
             video.onloadeddata = () => {
-                isVideoLoaded = true;
-                document.getElementById('upload-placeholder').style.display = 'none';
-                document.getElementById('sys-buttons').style.display = 'flex';
-                zoomWrapper.style.display = 'block';
-                document.getElementById('persistent-controls').style.display = 'flex';
-                
-                // Match canvas size to exact video display size
-                const rect = video.getBoundingClientRect();
-                canvas.width = rect.width;
-                canvas.height = rect.height;
-                
-                scrubber.max = video.duration;
-                resetAll();
-                updateWorkflow();
+                setupVideoUI();
             };
         });
 
@@ -352,13 +341,12 @@
         document.getElementById('zoom-level').addEventListener('change', (e) => {
             zoomLevel = parseFloat(e.target.value);
             zoomWrapper.style.transform = `scale(${zoomLevel})`;
-            // Set transform origin based on activeTap if it exists, else center
             if (activeTap) {
                 zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
             } else {
                 zoomWrapper.style.transformOrigin = 'center center';
             }
-            draw(); // Redraw canvas elements to scale them inversely
+            draw(); 
         });
 
         video.addEventListener('timeupdate', () => {
@@ -374,10 +362,9 @@
             isScrubbing = false;
         });
 
-        // --- CANVAS GESTURES (Pointer events for mouse/touch) ---
+        // --- CANVAS GESTURES ---
         canvas.addEventListener('pointerdown', (e) => {
             const rect = canvas.getBoundingClientRect();
-            // Calculate normalized coordinates regardless of zoom
             const x = ((e.clientX - rect.left) / rect.width);
             const y = ((e.clientY - rect.top) / rect.height);
 
@@ -429,7 +416,7 @@
             const h = canvas.height;
             const invZoom = 1.0 / zoomLevel;
 
-            // Draw Scale Dots (Blue)
+            // Scale Dots
             ctx.fillStyle = '#007aff';
             scaleDots.forEach(pt => {
                 ctx.beginPath();
@@ -437,7 +424,7 @@
                 ctx.fill();
             });
 
-            // Draw Active Trace (Cyan)
+            // Trace
             if (isAdjustingSize && activeTrace.length > 0) {
                 ctx.strokeStyle = '#32ade6';
                 ctx.lineWidth = 2 * invZoom;
@@ -449,7 +436,7 @@
                 ctx.stroke();
             }
 
-            // Draw Active Tap Crosshair (Cyan)
+            // Crosshair
             if (activeTap && !isAdjustingSize) {
                 ctx.strokeStyle = '#32ade6';
                 ctx.lineWidth = 2 * invZoom;
@@ -463,7 +450,7 @@
                 ctx.stroke();
             }
 
-            // Draw Physics Markers
+            // Physics Markers
             const dotRad = 5 * invZoom;
             const drawMarker = (pt, color) => {
                 if (!pt) return;
@@ -473,15 +460,14 @@
                 ctx.fill();
             };
 
-            drawMarker(startPt, '#34c759'); // Green
-            drawMarker(ascentPt, '#ffcc00'); // Yellow
-            drawMarker(peakPt, '#ff9500'); // Orange
-            drawMarker(descentPt, '#ffcc00'); // Yellow
-            drawMarker(endPt, '#ff3b30'); // Red
+            drawMarker(startPt, '#34c759'); 
+            drawMarker(ascentPt, '#ffcc00'); 
+            drawMarker(peakPt, '#ff9500'); 
+            drawMarker(descentPt, '#ffcc00'); 
+            drawMarker(endPt, '#ff3b30'); 
         }
 
         // --- WORKFLOW & LOGIC ---
-        
         function updateResultsText(text) {
             document.getElementById('results-text').innerText = text;
         }
@@ -496,7 +482,6 @@
 
             camSlider.disabled = (startPt !== null);
 
-            // Handle trace UI visibility
             if (isAdjustingSize) {
                 traceControls.style.display = 'flex';
                 playControls.style.display = 'none';
@@ -521,7 +506,6 @@
                 btn.style.display = 'block';
             }
 
-            // Standard Workflow Buttons
             btn.disabled = false;
             if (scaleDots.length < 2) {
                 btn.innerText = "Set 10yd Scale First";
@@ -563,8 +547,7 @@
             }
         }
 
-        // --- PHYSICS MATH (Direct Translation) ---
-
+        // --- PHYSICS MATH ---
         function calculateTraceSize() {
             if (activeTrace.length === 0) return 10.0;
             const xs = activeTrace.map(pt => pt.x * canvas.width);
@@ -614,9 +597,7 @@
             const max_Vz_ft = v_y0_ft / Math.tan(minAngleRad);
             const max_Z_yards = (max_Vz_ft * totalTime) / 3.0;
 
-            if (zDistanceYards > max_Z_yards) {
-                zDistanceYards = max_Z_yards;
-            }
+            if (zDistanceYards > max_Z_yards) { zDistanceYards = max_Z_yards; }
 
             const zDistanceFeet = zDistanceYards * 3.0;
             const v_z0_ft = zDistanceFeet / (totalTime > 0 ? totalTime : 1.0);
@@ -627,7 +608,6 @@
             if (points.length < 2) return;
 
             const p1 = scaleDots[0], p2 = scaleDots[1];
-            // Compute pixel distance mapped to width/height ratios
             const scalePixelDist = Math.sqrt(
                 Math.pow((p2.x - p1.x) * canvas.width, 2) +
                 Math.pow((p2.y - p1.y) * canvas.height, 2)
@@ -666,9 +646,7 @@
             const distanceHeightLimit = v_z0_yards * crossbarTime;
 
             let timeItGoesWide = Infinity;
-            if (Math.abs(v_x_yards) > 0.01) {
-                timeItGoesWide = 3.11 / Math.abs(v_x_yards);
-            }
+            if (Math.abs(v_x_yards) > 0.01) { timeItGoesWide = 3.11 / Math.abs(v_x_yards); }
 
             const distanceAccuracyLimit = v_z0_yards * timeItGoesWide;
 
@@ -693,7 +671,7 @@
             launchAngleRad = Math.atan(v_y0_ft / (v_z0_ft > 0 ? v_z0_ft : 0.1));
 
             activeReport = {
-                date: new Date().toLocaleDateString(),
+                date: new Date().toISOString(),
                 totalTime: totalTime,
                 timeToPeak: timeToPeak,
                 distanceYards: zDistanceYards,
@@ -705,7 +683,7 @@
                 angleWarning: angleWarning
             };
 
-            // Save to localStorage (Equivalent to kickStore.kicks.insert)
+            // Save to localStorage
             let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
             history.unshift(activeReport); // Puts newest at the top
             localStorage.setItem('kickHistory', JSON.stringify(history));
@@ -714,21 +692,13 @@
         }
 
         // --- UTILS & PLAYBACK ---
-
         function togglePlay() {
-            if (video.paused) {
-                video.play();
-                document.getElementById('btn-playpause').innerText = '⏸';
-            } else {
-                video.pause();
-                document.getElementById('btn-playpause').innerText = '▶';
-            }
+            if (video.paused) { video.play(); document.getElementById('btn-playpause').innerText = '⏸'; } 
+            else { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; }
         }
 
         function stepFrame(frames) {
-            video.pause();
-            document.getElementById('btn-playpause').innerText = '▶';
-            // Assuming ~30fps 
+            video.pause(); document.getElementById('btn-playpause').innerText = '▶';
             video.currentTime += (1/30) * frames;
         }
 
@@ -746,29 +716,62 @@
 
         function showReportModal() {
             if (!activeReport) return;
-            
             const maxGood = Math.max(0, activeReport.maxGoodDistance);
             document.getElementById('rep-max').innerText = `≤ ${Math.floor(maxGood)} yds`;
             document.getElementById('rep-past-label').innerText = `Past ${Math.floor(maxGood)} yds`;
             document.getElementById('rep-miss').innerText = activeReport.missType;
-            
             document.getElementById('rep-time').innerText = `${activeReport.totalTime.toFixed(2)}s`;
             document.getElementById('rep-height').innerText = `${activeReport.peakHeightFeet.toFixed(1)} ft`;
             document.getElementById('rep-angle').innerText = `${activeReport.launchAngle.toFixed(1)}°`;
             
             const warnEl = document.getElementById('rep-warning');
-            if (activeReport.angleWarning) {
-                warnEl.innerText = activeReport.angleWarning;
-                warnEl.style.display = 'block';
-            } else {
-                warnEl.style.display = 'none';
-            }
+            if (activeReport.angleWarning) { warnEl.innerText = activeReport.angleWarning; warnEl.style.display = 'block'; } 
+            else { warnEl.style.display = 'none'; }
             
             document.getElementById('rep-depth').innerText = `${activeReport.distanceYards.toFixed(1)} yds`;
-            
             document.getElementById('report-modal').style.display = 'flex';
         }
 
+        function setupVideoUI() {
+            isVideoLoaded = true;
+            document.getElementById('upload-placeholder').style.display = 'none';
+            document.getElementById('sys-buttons').style.display = 'flex';
+            zoomWrapper.style.display = 'block';
+            document.getElementById('persistent-controls').style.display = 'flex';
+            
+            const rect = video.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            
+            scrubber.max = video.duration;
+            resetAll();
+            updateWorkflow();
+        }
+
+        // --- INDEXED DB LISTENER (Catches video from camera.html) ---
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('load') === 'latest') {
+                const request = indexedDB.open('KickTrackerDB', 1);
+                request.onsuccess = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('videos')) return;
+                    
+                    const transaction = db.transaction('videos', 'readonly');
+                    const store = transaction.objectStore('videos');
+                    const getRequest = store.get('latest_kick');
+                    
+                    getRequest.onsuccess = () => {
+                        if (getRequest.result) {
+                            const videoURL = URL.createObjectURL(getRequest.result);
+                            video.src = videoURL;
+                            video.load();
+                            video.onloadeddata = setupVideoUI;
+                        }
+                    };
+                };
+            }
+        };
     </script>
 </body>
 </html>
