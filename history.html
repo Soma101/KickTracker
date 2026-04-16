@@ -6,296 +6,176 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="KickTracker">
-    <title>History Database</title>
+    <title>Kick History</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            background-color: #f2f2f7; /* iOS grouped background color */
-            color: #000;
+            background-color: #000;
+            color: #fff;
             display: flex;
             flex-direction: column;
-            height: 100vh;
+            height: 100dvh; /* Prevents vertical bouncing */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            box-sizing: border-box;
         }
 
-        /* Navigation Bar */
-        .nav-bar {
+        .sys-buttons {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px 20px;
-            background-color: #ffffff;
-            border-bottom: 1px solid #e5e5ea;
-            font-weight: bold;
-            font-size: 17px;
+            justify-content: flex-start;
+            padding: 8px 16px;
+            background-color: #1c1c1e;
         }
 
-        .nav-bar button {
-            background: none;
+        #btn-home {
+            padding: 6px 12px;
+            border-radius: 6px;
             border: none;
-            font-size: 17px;
+            font-weight: bold;
             cursor: pointer;
-            padding: 0;
+            background: #007aff;
+            color: white;
         }
 
-        #btn-back { color: #007aff; }
-        #btn-clear { color: #ff3b30; }
+        h1 {
+            text-align: center;
+            margin: 15px 0;
+            font-size: 24px;
+            font-weight: 800;
+        }
 
-        /* List Styling */
-        .list-container {
+        .history-list {
             flex-grow: 1;
             overflow-y: auto;
-            padding: 20px;
-        }
-
-        .empty-state {
-            text-align: center;
-            color: #8e8e93;
-            margin-top: 40px;
-            font-size: 16px;
-        }
-
-        .section-header {
-            font-size: 13px;
-            text-transform: uppercase;
-            color: #8e8e93;
-            margin-bottom: 8px;
-            margin-left: 15px;
-        }
-
-        .list-card {
-            background-color: #ffffff;
-            border-radius: 10px;
-            padding: 12px 16px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            cursor: pointer;
-        }
-
-        .list-card:active {
-            background-color: #e5e5ea;
-        }
-
-        .card-left {
+            padding: 10px 16px;
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 12px;
         }
 
-        .card-title {
-            font-size: 17px;
-            font-weight: 600;
-            color: #000;
+        .history-card {
+            background-color: #1c1c1e;
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid #3a3a3c;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
-        .card-subtitle {
-            font-size: 15px;
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
             color: #8e8e93;
+            border-bottom: 1px solid #3a3a3c;
+            padding-bottom: 8px;
         }
 
-        .card-right {
-            text-align: right;
-            font-size: 15px;
-            font-weight: 600;
+        .card-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 16px;
+            font-weight: bold;
         }
 
         .text-green { color: #34c759; }
         .text-red { color: #ff3b30; }
         .text-orange { color: #ff9500; }
-
-        /* Modal Styles (Duplicated from analyze.html) */
-        #report-modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 100;
-            align-items: flex-end; /* Slides up from bottom */
-            justify-content: center;
+        
+        .empty-state {
+            text-align: center;
+            color: #8e8e93;
+            margin-top: 50px;
+            font-size: 18px;
         }
-        .report-content {
-            background: #f2f2f7;
-            width: 100%;
-            border-top-left-radius: 20px;
-            border-top-right-radius: 20px;
-            padding: 20px;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-sizing: border-box;
-            animation: slideUp 0.3s ease-out;
-        }
-        @keyframes slideUp {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
-        }
-        .report-section {
-            background: #ffffff;
+        
+        .btn-clear {
+            margin: 10px 16px;
+            padding: 12px;
+            background-color: #3a3a3c;
+            color: #ff3b30;
+            border: none;
             border-radius: 10px;
-            padding: 10px 15px;
-            margin-bottom: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+            text-align: center;
         }
-        .report-header { font-weight: 600; margin-bottom: 10px; font-size: 13px; color: #8e8e93; text-transform: uppercase;}
-        .report-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 16px; padding-bottom: 8px; border-bottom: 1px solid #e5e5ea; }
-        .report-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-        .btn-close-modal { width: 100%; padding: 14px; background: #ffffff; color: #007aff; border: none; border-radius: 10px; font-weight: bold; font-size: 17px; cursor: pointer; margin-bottom: 20px;}
     </style>
 </head>
 <body>
 
-    <div class="nav-bar">
-        <button id="btn-back" onclick="window.location.href='index.html'">&#10094; Back</button>
-        <div>History Database</div>
-        <button id="btn-clear" onclick="clearHistory()" style="display: none;">Clear</button>
+    <div class="sys-buttons">
+        <button id="btn-home" onclick="window.location.href='index.html'">&#10094; Home</button>
     </div>
 
-    <div class="list-container" id="list-container">
+    <h1>Kick History</h1>
+
+    <div class="history-list" id="history-list">
         </div>
 
-    <div id="report-modal">
-        <div class="report-content">
-            <h2 style="text-align:center; margin-top:0; font-size: 17px;">Actuarial Report</h2>
-            
-            <div class="report-section">
-                <div class="report-header">Scoring Projection</div>
-                <div class="report-row"><span>Max Good Distance</span> <span class="text-green" id="rep-max">-- yds</span></div>
-                <div class="report-row"><span id="rep-past-label">Past -- yds</span> <span class="text-red" id="rep-miss">--</span></div>
-            </div>
-
-            <div class="report-section">
-                <div class="report-header">Flight Physics</div>
-                <div class="report-row"><span>Total Hang Time</span> <span id="rep-time" style="font-weight:600;">--s</span></div>
-                <div class="report-row"><span>Peak Height</span> <span id="rep-height" style="font-weight:600;">-- ft</span></div>
-                <div class="report-row"><span>Launch Angle</span> <span id="rep-angle" class="text-orange">--°</span></div>
-                <div id="rep-warning" style="color:#ff9500; font-size:13px; margin-top:8px; display:none;"></div>
-            </div>
-
-            <div class="report-section">
-                <div class="report-header">Optics Engine Data</div>
-                <div class="report-row"><span>True Depth Travelled</span> <span id="rep-depth" style="color:#8e8e93;">-- yds</span></div>
-            </div>
-
-            <button class="btn-close-modal" onclick="closeReportModal()">Close Report</button>
-        </div>
-    </div>
+    <button class="btn-clear" id="btn-clear" onclick="clearHistory()" style="display: none;">Clear All History</button>
 
     <script>
-        let historyData = [];
-
-        // Formatting date to roughly match iOS: "MM/dd/yyyy, HH:mm"
-        function formatDate(dateString) {
-            const date = new Date(dateString);
-            if (isNaN(date)) return dateString; // Fallback if parsing fails
-            
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const year = date.getFullYear();
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            
-            return `${month}/${day}/${year}, ${hours}:${minutes}`;
-        }
-
-        // Renders the list of kicks
         function loadHistory() {
-            const container = document.getElementById('list-container');
+            const historyList = document.getElementById('history-list');
             const clearBtn = document.getElementById('btn-clear');
-            historyData = JSON.parse(localStorage.getItem('kickHistory')) || [];
+            
+            // Pulls the saved JSON array from your browser's local storage
+            let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
 
-            container.innerHTML = ''; // Clear existing content
-
-            if (historyData.length === 0) {
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="empty-state">No kicks recorded yet.<br><br>Go to Analyze Video to generate reports.</div>';
                 clearBtn.style.display = 'none';
-                container.innerHTML = `
-                    <div class="empty-state">
-                        No history available. Analyze a video to save your first kick!
-                    </div>
-                `;
                 return;
             }
 
             clearBtn.style.display = 'block';
+            historyList.innerHTML = '';
 
-            // Add Section Header
-            const header = document.createElement('div');
-            header.className = 'section-header';
-            header.innerText = `Recorded Kicks (${historyData.length})`;
-            container.appendChild(header);
-
-            // Loop through history (already sorted latest first by analyze.html)
-            historyData.forEach((kick, index) => {
-                // Calculate kick number (oldest is #1)
-                const kickNumber = historyData.length - index;
+            history.forEach((kick, index) => {
+                const date = new Date(kick.date);
+                const formattedDate = date.toLocaleDateString() + ' at ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 
-                // Determine layout for right side status
-                const maxDist = Math.max(0, kick.maxGoodDistance);
-                let rightSideHTML = '';
-                if (maxDist > 0) {
-                    rightSideHTML = `<div class="text-green">≤ ${Math.floor(maxDist)} yds</div>`;
-                } else {
-                    rightSideHTML = `<div class="text-red">MISS</div>`;
-                }
+                const maxGood = Math.max(0, kick.maxGoodDistance);
+                const missTextClass = kick.missType.includes("Short") || kick.missType.includes("Miss") ? "text-red" : "text-green";
 
-                // Create Card
                 const card = document.createElement('div');
-                card.className = 'list-card';
-                card.onclick = () => openReportModal(index);
+                card.className = 'history-card';
                 card.innerHTML = `
-                    <div class="card-left">
-                        <div class="card-title">Kick #${kickNumber} (${formatDate(kick.date)})</div>
-                        <div class="card-subtitle">${kick.distanceYards.toFixed(1)} yds &bull; ${kick.launchAngle.toFixed(1)}&deg;</div>
+                    <div class="card-header">
+                        <span>Kick #${history.length - index}</span>
+                        <span>${formattedDate}</span>
                     </div>
-                    <div class="card-right">
-                        ${rightSideHTML}
+                    <div class="card-row">
+                        <span>Max Good:</span>
+                        <span class="text-green">≤ ${Math.floor(maxGood)} yds</span>
+                    </div>
+                    <div class="card-row">
+                        <span>Past ${Math.floor(maxGood)} yds:</span>
+                        <span class="${missTextClass}">${kick.missType}</span>
+                    </div>
+                    <div class="card-row" style="font-weight: normal; font-size: 14px; margin-top: 4px; color: #d1d1d6;">
+                        <span>Time: ${kick.totalTime.toFixed(2)}s</span>
+                        <span>Height: ${kick.peakHeightFeet.toFixed(1)}ft</span>
+                        <span class="text-orange">Ang: ${kick.launchAngle.toFixed(1)}°</span>
                     </div>
                 `;
-                container.appendChild(card);
+                historyList.appendChild(card);
             });
         }
 
-        // Translates toolbar Clear button
         function clearHistory() {
-            if (confirm("Are you sure you want to clear all history?")) {
+            if(confirm("Are you sure you want to delete all kick history? This cannot be undone.")) {
                 localStorage.removeItem('kickHistory');
                 loadHistory();
             }
         }
 
-        // Translates .sheet(item: $selectedKick)
-        function openReportModal(index) {
-            const report = historyData[index];
-            if (!report) return;
-
-            const maxGood = Math.max(0, report.maxGoodDistance);
-            document.getElementById('rep-max').innerText = `≤ ${Math.floor(maxGood)} yds`;
-            document.getElementById('rep-past-label').innerText = `Past ${Math.floor(maxGood)} yds`;
-            document.getElementById('rep-miss').innerText = report.missType;
-            
-            document.getElementById('rep-time').innerText = `${report.totalTime.toFixed(2)}s`;
-            document.getElementById('rep-height').innerText = `${report.peakHeightFeet.toFixed(1)} ft`;
-            document.getElementById('rep-angle').innerText = `${report.launchAngle.toFixed(1)}°`;
-            
-            const warnEl = document.getElementById('rep-warning');
-            if (report.angleWarning) {
-                warnEl.innerText = report.angleWarning;
-                warnEl.style.display = 'block';
-            } else {
-                warnEl.style.display = 'none';
-            }
-            
-            document.getElementById('rep-depth').innerText = `${report.distanceYards.toFixed(1)} yds`;
-            
-            document.getElementById('report-modal').style.display = 'flex';
-        }
-
-        function closeReportModal() {
-            document.getElementById('report-modal').style.display = 'none';
-        }
-
-        // Initialize view
-        loadHistory();
+        // Run the load function as soon as the page opens
+        window.onload = loadHistory;
     </script>
 </body>
 </html>
