@@ -22,7 +22,6 @@
             box-sizing: border-box;
         }
         
-        /* Updated: Always displays the top bar */
         .sys-buttons {
             display: flex;
             justify-content: flex-end;
@@ -39,7 +38,6 @@
             cursor: pointer;
         }
         
-        /* Updated: Home button pushed to the left side */
         #btn-home { background: #007aff; color: white; margin-right: auto; }
         #btn-reset { background: #3a3a3c; color: white; display: none; }
         #btn-new { background: #ff3b30; color: white; display: none; }
@@ -317,6 +315,8 @@
         let cameraDistance = 15.0;
         let ballSizeStart = 10.0;
         let ballSizeEnd = 10.0;
+        let startAspectRatio = 1.0; 
+        let endAspectRatio = 1.0;   
         let isAdjustingSize = false;
         let zoomLevel = 1.0;
         
@@ -578,7 +578,7 @@
             }
         }
 
-        // --- PHYSICS MATH ---
+        // --- OPTICS MATH ---
         function calculateTraceSize() {
             if (activeTrace.length === 0) return 10.0;
             const xs = activeTrace.map(pt => pt.x * canvas.width);
@@ -588,8 +588,19 @@
             return Math.sqrt(Math.max((maxX - minX), 2.0) * Math.max((maxY - minY), 2.0));
         }
 
+        // Calculates the aspect ratio (stretch) of the bounding box
+        function calculateAspectRatio() {
+            if (activeTrace.length === 0) return 1.0;
+            const xs = activeTrace.map(pt => pt.x * canvas.width);
+            const ys = activeTrace.map(pt => pt.y * canvas.height);
+            const width = Math.max((Math.max(...xs) - Math.min(...xs)), 1.0);
+            const height = Math.max((Math.max(...ys) - Math.min(...ys)), 1.0);
+            return Math.max(width, height) / Math.min(width, height);
+        }
+
         function confirmStartTrace() {
             ballSizeStart = calculateTraceSize();
+            startAspectRatio = calculateAspectRatio(); // Save initial shape
             startPt = {time: video.currentTime, pos: activeTap};
             activeTap = null; activeTrace = []; isAdjustingSize = false; 
             document.getElementById('zoom-level').value = "1";
@@ -600,6 +611,7 @@
 
         function confirmEndTrace() {
             ballSizeEnd = calculateTraceSize();
+            endAspectRatio = calculateAspectRatio(); // Save landing shape for blur detection
             endPt = {time: video.currentTime, pos: activeTap};
             activeTap = null; activeTrace = []; isAdjustingSize = false;
             document.getElementById('zoom-level').value = "1";
@@ -620,7 +632,16 @@
 
             // 2. Optical Depth Physics
             const rawRatio = ballSizeStart / ballSizeEnd;
-            const blurCompensatedRatio = Math.pow(rawRatio, 1.25);
+
+            // DYNAMIC BLUR ENGINE
+            let dynamicExponent = 1.0; // Baseline: no blur compensation
+            if (endAspectRatio > 1.6) {
+                // If trace is stretched beyond a normal 1.6 football ratio, scale the exponent up
+                let blurSeverity = (endAspectRatio - 1.6) * 0.15;
+                dynamicExponent = 1.0 + Math.min(blurSeverity, 0.35); // Caps at 1.35 max
+            }
+
+            const blurCompensatedRatio = Math.pow(rawRatio, dynamicExponent);
 
             let zDistanceYards = cameraDistance * (blurCompensatedRatio - 1.0);
 
@@ -639,6 +660,8 @@
             if (points.length < 2) return;
 
             const p1 = scaleDots[0], p2 = scaleDots[1];
+            
+            // EXACT MATCH: Calculate using normalized units, not raw canvas pixels
             const scalePixelDist = Math.sqrt(
                 Math.pow((p2.x - p1.x), 2) +
                 Math.pow((p2.y - p1.y), 2)
