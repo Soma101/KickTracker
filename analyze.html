@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analyze Video</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; padding: 20px; text-align: center; background-color: #f2f2f7; }
+        .engine-container { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 20px; }
+        button { padding: 12px 24px; font-size: 16px; font-weight: bold; background-color: #007aff; color: white; border: none; border-radius: 8px; cursor: pointer; margin-top: 20px;}
+        #btn-back { background-color: #8e8e93; margin-right: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>Physics Analysis</h1>
+    
+    <div class="engine-container">
+        <h2>Launch Angle: <span id="angle-result">--</span>°</h2>
+        <h2>Velocity: <span id="velocity-result">--</span> mph</h2>
+        
+        <canvas id="analysis-canvas" width="300" height="300" style="background: #e5e5ea; border-radius: 8px; margin-top: 20px;"></canvas>
+    </div>
+
+    <div>
+        <button id="btn-back" onclick="window.location.href='index.html'">Back Home</button>
+        <button id="btn-calculate">Run Calculations</button>
+    </div>
+
+    <script>
+        // TRANSLATE SWIFT LOGIC HERE
+        // This is where your Swift mathematical variables go
+        let launchAngle = 0.0;
+        let velocity = 0.0;
+
+        document.getElementById('btn-calculate').addEventListener('click', () => {
+            // Replace this with your exact Swift calculations
+            console.log("Running physics engine...");
+            
+            // Example output update:
+            document.getElementById('angle-result').innerText = "45.2";
+            document.getElementById('velocity-result').innerText = "62.4";
+            
+            // Save to history (Translates Swift's UserDefaults/CoreData)
+            saveToHistory(45.2, 62.4);
+        });
+
+        function saveToHistory(angle, vel) {
+            let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
+            history.push({ date: new Date().toLocaleDateString(), angle: angle, velocity: vel });
+            localStorage.setItem('kickHistory', JSON.stringify(history));
+        }
+    </script>
+</body>
+</html>
