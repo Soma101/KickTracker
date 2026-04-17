@@ -5,40 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="KickTracker">
     <title>Analyze Video</title>
     <style>
-        body { font-family: -apple-system, sans-serif; margin: 0; background-color: #000; color: #fff; display: flex; flex-direction: column; height: 100dvh; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); overflow: hidden; box-sizing: border-box; }
-        .sys-buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px; background-color: #1c1c1e; z-index: 100; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background-color: #000; color: #fff; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+        
+        .sys-buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; background-color: #1c1c1e; z-index: 100; }
         .sys-buttons button { padding: 6px 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; }
         #btn-home { background: #007aff; color: white; margin-right: auto; }
-        #btn-reset { background: #3a3a3c; color: white; display: none; }
-        #btn-new { background: #ff3b30; color: white; display: none; }
+        #btn-reset { background: #3a3a3c; color: white; }
+        #btn-new { background: #ff3b30; color: white; }
         #file-upload { display: none; }
-        .dashboard { background-color: #1c1c1e; padding: 10px 16px; display: flex; flex-direction: column; gap: 10px; z-index: 100; }
+
+        .dashboard { background-color: #1c1c1e; padding: 10px 16px; display: flex; flex-direction: column; gap: 10px; z-index: 100; border-bottom: 1px solid #3a3a3c; }
         .row { display: flex; align-items: center; gap: 10px; justify-content: center; }
-        select, input[type="range"] { padding: 4px; border-radius: 4px; background: #2c2c2e; color: white; border: 1px solid #3a3a3c; }
-        .results-box { background-color: #2c2c2e; padding: 8px; border-radius: 8px; font-family: monospace; font-size: 13px; text-align: center; }
+        select, input[type="range"] { padding: 6px; border-radius: 6px; background: #2c2c2e; color: white; border: 1px solid #3a3a3c; }
+
+        .results-box { background-color: #2c2c2e; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 13px; text-align: center; color: #8e8e93; }
+
         .viewport-container { flex-grow: 1; position: relative; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
-        .zoom-wrapper { position: relative; display: flex; align-items: center; justify-content: center; transition: transform 0.05s linear; transform-origin: center center; z-index: 1; }
+        
+        /* THE NESTED SYNC: Both video and canvas live inside this zoomable wrapper */
+        .zoom-wrapper { position: relative; display: flex; align-items: center; justify-content: center; transition: transform 0.1s ease-out; transform-origin: center center; }
+        
         video { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; pointer-events: none; }
+        
+        /* The Canvas: Stacked directly on top of the video */
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; z-index: 50; }
-        .upload-placeholder { position: absolute; color: #007aff; font-weight: bold; cursor: pointer; z-index: 60; }
-        .controls { background-color: #1c1c1e; padding: 10px; display: flex; flex-direction: column; gap: 10px; z-index: 100; }
-        .playback-row { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
-        .playback-row button { background: none; border: none; color: white; font-size: 16px; }
+
+        .controls { background-color: #1c1c1e; padding: 10px; display: flex; flex-direction: column; gap: 10px; z-index: 100; border-top: 1px solid #3a3a3c; }
+        .playback-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 20px; }
+        .playback-row button { background: none; border: none; color: white; font-size: 18px; font-weight: bold; }
+
         .workflow-bar { background-color: #1c1c1e; padding: 15px; display: flex; justify-content: center; z-index: 100; }
-        .workflow-btn { width: 100%; padding: 16px; font-size: 18px; font-weight: bold; border: none; border-radius: 12px; color: white; background: #3a3a3c; }
+        .workflow-btn { width: 100%; padding: 16px; font-size: 18px; font-weight: bold; border: none; border-radius: 12px; color: white; background: #007aff; }
+        .workflow-btn:disabled { background: #3a3a3c; color: #8e8e93; }
+
         #report-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 200; align-items: center; justify-content: center; }
-        .report-content { background: #1c1c1e; width: 90%; max-width: 400px; border-radius: 16px; padding: 20px; max-height: 85vh; overflow-y: auto; border: 1px solid #3a3a3c; }
-        .report-section { background: #2c2c2e; border-radius: 10px; padding: 10px 15px; margin-bottom: 15px; }
-        .report-header { font-weight: bold; margin-bottom: 10px; font-size: 12px; color: #8e8e93; text-transform: uppercase; }
-        .report-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 16px; border-bottom: 1px solid #3a3a3c; padding-bottom: 8px; }
-        .report-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .report-content { background: #1c1c1e; width: 85%; max-width: 400px; border-radius: 16px; padding: 24px; border: 1px solid #3a3a3c; }
+        .report-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 18px; border-bottom: 1px solid #3a3a3c; padding-bottom: 8px; }
         .text-green { color: #34c759; font-weight: bold; }
-        .text-red { color: #ff3b30; font-weight: bold; }
-        .text-orange { color: #ff9500; font-weight: bold; }
-        .btn-close-modal { width: 100%; padding: 14px; background: #007aff; color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 16px; margin-top: 10px; }
+        .btn-close-modal { width: 100%; padding: 14px; background: #007aff; color: white; border: none; border-radius: 12px; font-weight: bold; margin-top: 15px; }
     </style>
 </head>
 <body>
@@ -52,40 +58,35 @@
 
     <div class="dashboard">
         <div class="row">
-            <select id="game-level"><option value="NFL">NFL</option><option value="College" selected>College</option></select>
-            <select id="hash-pos"><option value="Left">Left</option><option value="Middle" selected>Middle</option><option value="Right">Right</option></select>
+            <select id="game-level"><option value="College" selected>College</option><option value="NFL">NFL</option></select>
+            <select id="hash-pos"><option value="Middle" selected>Middle</option><option value="Left">Left</option><option value="Right">Right</option></select>
         </div>
-        <div class="row" style="font-size: 12px; font-weight: bold;">
+        <div class="row" style="font-size: 12px;">
             Depth (Yds): <span id="depth-val">15</span>
-            <input type="range" id="cam-depth" min="5" max="50" step="1" value="15" style="flex-grow:1;">
+            <input type="range" id="cam-depth" min="5" max="50" value="15" style="flex-grow:1;">
         </div>
-        <div class="results-box" id="results-text">Upload Video to Begin.</div>
+        <div class="results-box" id="results-text">Upload Video to start.</div>
     </div>
 
     <div class="viewport-container" id="viewport-container">
-        <div class="upload-placeholder" id="upload-placeholder" onclick="document.getElementById('file-upload').click()">Upload Video</div>
         <div class="zoom-wrapper" id="zoom-wrapper" style="display: none;">
             <video id="video-player" playsinline muted></video>
+            <canvas id="overlay"></canvas>
         </div>
-        <canvas id="overlay"></canvas>
     </div>
 
     <div class="controls" id="persistent-controls" style="display: none;">
-        <div class="row" style="padding: 0 10px;">
-            <span style="font-size: 12px; font-weight: bold; width: 45px;">Zoom:</span>
-            <input type="range" id="zoom-slider" min="1" max="20" step="0.1" value="1" style="flex-grow:1;">
-            <span id="zoom-val" style="font-size: 12px; width: 35px; text-align: right;">1x</span>
-        </div>
-        <div id="trace-controls" style="display: none; justify-content: center; gap: 10px;">
-            <button onclick="activeTrace = []; draw()" style="background:#ff3b30; color:white; border:none; padding:10px; border-radius:8px; font-weight:bold;">CLEAR</button>
-            <button id="btn-confirm-trace" style="background:#34c759; color:white; border:none; padding:10px; border-radius:8px; font-weight:bold;">CONFIRM</button>
+        <div class="row">
+            <span style="font-size: 12px; width: 45px;">Zoom:</span>
+            <input type="range" id="zoom-slider" min="1" max="20" step="0.5" value="1" style="flex-grow:1;">
+            <span id="zoom-val" style="font-size: 12px; width: 30px;">1x</span>
         </div>
         <div id="playback-controls">
-            <input type="range" id="scrubber" min="0" max="1" step="0.01" value="0" style="width: 100%; margin-bottom: 10px;">
+            <input type="range" id="scrubber" min="0" max="1" step="0.001" value="0" style="width: 100%; margin-bottom: 10px;">
             <div class="playback-row">
-                <button onclick="stepFrame(-1)">-1 Fr</button>
-                <button id="btn-playpause" onclick="togglePlay()" style="font-size: 24px;">⏸</button>
-                <button onclick="stepFrame(1)">+1 Fr</button>
+                <button onclick="stepFrame(-1)">-1</button>
+                <button id="btn-playpause" onclick="togglePlay()">⏸</button>
+                <button onclick="stepFrame(1)">+1</button>
             </div>
         </div>
     </div>
@@ -94,23 +95,12 @@
 
     <div id="report-modal">
         <div class="report-content">
-            <h2 style="text-align:center; margin-top:0;">Actuarial Report</h2>
-            <div class="report-section">
-                <div class="report-header">Success Logic</div>
-                <div class="report-row"><span>Good From</span> <span class="text-green" id="rep-max">-- yds</span></div>
-                <div class="report-row"><span id="rep-past-label">Past Limit</span> <span class="text-red" id="rep-miss">--</span></div>
-            </div>
-            <div class="report-section">
-                <div class="report-header">Ball Flight</div>
-                <div class="report-row"><span>Time</span> <span id="rep-time" style="font-weight:bold;">--s</span></div>
-                <div class="report-row"><span>Height</span> <span id="rep-height" style="font-weight:bold;">-- ft</span></div>
-                <div class="report-row"><span>Angle</span> <span id="rep-angle" class="text-orange">--°</span></div>
-            </div>
-            <div class="report-section">
-                <div class="report-header">Optics</div>
-                <div class="report-row"><span>True Depth</span> <span id="rep-depth" style="color:#8e8e93;">-- yds</span></div>
-            </div>
-            <button class="btn-close-modal" onclick="document.getElementById('report-modal').style.display='none'">Close Report</button>
+            <h2 style="text-align:center; margin-top:0;">Kick Report</h2>
+            <div class="report-row"><span>Good From</span> <span class="text-green" id="rep-max">--</span></div>
+            <div class="report-row"><span>Miss Logic</span> <span id="rep-miss" style="color:#ff3b30;">--</span></div>
+            <div class="report-row"><span>Peak Ht</span> <span id="rep-height" style="font-weight:bold;">--</span></div>
+            <div class="report-row"><span>True Dist</span> <span id="rep-depth" style="color:#8e8e93;">--</span></div>
+            <button class="btn-close-modal" onclick="document.getElementById('report-modal').style.display='none'">Close</button>
         </div>
     </div>
 
@@ -122,16 +112,16 @@
         const zoomWrapper = document.getElementById('zoom-wrapper');
         const scrubber = document.getElementById('scrubber');
         
-        let isVideoLoaded = false; let isScrubbing = false; let activeReport = null;
-        let cameraDistance = 15.0; let ballSizeStart = 10.0; let ballSizeEnd = 10.0;
-        let startAspectRatio = 1.0; let endAspectRatio = 1.0; let isAdjustingSize = false; let zoomLevel = 1.0;
-        let scaleDots = []; let activeTap = null; let activeTrace = []; let isDrawingTrace = false;
-        let startPt = null; let ascentPt = null; let peakPt = null; let descentPt = null; let endPt = null;
+        let cameraDistance = 15.0; let ballSizeStart = 1.0; let ballSizeEnd = 1.0;
+        let startAspectRatio = 1.0; let endAspectRatio = 1.0;
+        let zoomLevel = 1.0; let activeTap = null; let activeTrace = []; 
+        let isVideoLoaded = false; let isDrawing = false; let scaleDots = [];
+        let startPt = null; let peakPt = null; let endPt = null;
 
         document.getElementById('file-upload').addEventListener('change', (e) => {
             const file = e.target.files[0]; if (!file) return;
-            video.onloadedmetadata = () => { setupVideoUI(); };
             video.src = URL.createObjectURL(file); video.load();
+            video.onloadedmetadata = setupVideoUI;
         });
 
         document.getElementById('cam-depth').addEventListener('input', (e) => {
@@ -140,217 +130,141 @@
 
         document.getElementById('zoom-slider').addEventListener('input', (e) => {
             zoomLevel = parseFloat(e.target.value);
-            document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
-            updateZoomTransform();
-            draw(); 
-        });
-
-        function updateZoomTransform() {
+            document.getElementById('zoom-val').innerText = zoomLevel + 'x';
             if (activeTap) {
                 zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
-            } else {
-                zoomWrapper.style.transformOrigin = 'center center';
             }
             zoomWrapper.style.transform = `scale(${zoomLevel})`;
-        }
+        });
 
-        video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
-        scrubber.addEventListener('input', (e) => { isScrubbing = true; video.currentTime = e.target.value; });
-        scrubber.addEventListener('change', () => { isScrubbing = false; });
-
-        // --- OFFSET FIX: Local coordinates ignore status bars/notches ---
         canvas.addEventListener('pointerdown', (e) => {
-            const x = e.offsetX / canvas.clientWidth;
-            const y = e.offsetY / canvas.clientHeight;
-            const pt = { x, y };
-            if (isAdjustingSize) { isDrawingTrace = true; activeTrace = [pt]; } 
-            else { handleTap(pt); }
+            const rect = canvas.getBoundingClientRect();
+            // This ensures the tap is perfectly calculated regardless of zoom
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+            
+            if (scaleDots.length < 2 || (startPt && !endPt && isDrawing)) {
+                isDrawing = true; activeTrace = [{x, y}];
+            } else {
+                handleTap({x, y});
+            }
             draw();
         });
 
         canvas.addEventListener('pointermove', (e) => {
-            if (!isDrawingTrace) return;
-            activeTrace.push({ x: e.offsetX / canvas.clientWidth, y: e.offsetY / canvas.clientHeight });
+            if (!isDrawing) return;
+            const rect = canvas.getBoundingClientRect();
+            activeTrace.push({ x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height });
             draw();
         });
 
-        canvas.addEventListener('pointerup', () => { isDrawingTrace = false; updateWorkflow(); });
+        canvas.addEventListener('pointerup', () => { isDrawing = false; updateWorkflow(); });
 
         function handleTap(pt) {
             activeTap = pt;
-            updateZoomTransform();
-            updateWorkflow();
-            draw();
-        }
-
-        function draw() {
-            const dpr = window.devicePixelRatio || 1;
-            ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-            const w = canvas.width / dpr;
-            const h = canvas.height / dpr;
-            const invZ = 1.0 / zoomLevel;
-
-            scaleDots.forEach(pt => { 
-                ctx.fillStyle = '#007aff'; ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, 8 * invZ, 0, Math.PI * 2); ctx.fill(); 
-            });
-
-            if (isAdjustingSize && activeTrace.length > 0) {
-                ctx.strokeStyle = 'black'; ctx.lineWidth = 4 * invZ;
-                ctx.beginPath(); ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
-                for (let i = 1; i < activeTrace.length; i++) ctx.lineTo(activeTrace[i].x * w, activeTrace[i].y * h);
-                ctx.stroke();
-                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1.2 * invZ; ctx.stroke();
+            if (zoomLevel > 1) {
+                zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
+                zoomWrapper.style.transform = `scale(${zoomLevel})`;
             }
-
-            if (activeTap && !isAdjustingSize) {
-                const px = activeTap.x * w; const py = activeTap.y * h;
-                const len = 15 * invZ;
-                ctx.strokeStyle = 'black'; ctx.lineWidth = 4 * invZ;
-                ctx.beginPath(); ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); ctx.stroke();
-                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1.2 * invZ; ctx.stroke();
-            }
-
-            const drawMarker = (pt, color) => {
-                if (!pt) return; 
-                ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pt.pos.x * w, pt.pos.y * h, 6 * invZ, 0, Math.PI * 2); ctx.fill();
-            };
-            drawMarker(startPt, '#34c759'); drawMarker(ascentPt, '#ffcc00'); drawMarker(peakPt, '#ff9500'); drawMarker(descentPt, '#ffcc00'); drawMarker(endPt, '#ff3b30'); 
-        }
-
-        function updateWorkflow() {
-            if (!isVideoLoaded) return;
-            const btn = document.getElementById('btn-workflow'); const trc = document.getElementById('trace-controls'); const pb = document.getElementById('playback-controls');
-            if (isAdjustingSize) {
-                trc.style.display = 'flex'; pb.style.display = 'none'; btn.style.display = 'none';
-                const cBtn = document.getElementById('btn-confirm-trace'); cBtn.disabled = activeTrace.length < 2;
-                if (startPt === null) { cBtn.innerText = "CONFIRM IMPACT"; cBtn.onclick = confirmStartTrace; } 
-                else { cBtn.innerText = "FINALIZE KICK"; cBtn.onclick = confirmEndTrace; }
-                return;
-            } 
-            trc.style.display = 'none'; pb.style.display = 'block'; btn.style.display = 'block'; btn.disabled = false;
-            if (scaleDots.length === 0) {
-                btn.innerText = "SET 1ST SCALE DOT"; btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
-            } else if (scaleDots.length === 1) {
-                btn.innerText = "SET 2ND SCALE DOT"; btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
-            } else if (startPt === null) {
-                btn.innerText = "LOCK IMPACT"; btn.onclick = () => { isAdjustingSize = true; updateWorkflow(); };
-            } else if (ascentPt === null) {
-                btn.innerText = "MARK ASCENT"; btn.onclick = () => { ascentPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateWorkflow(); draw(); };
-            } else if (peakPt === null) {
-                btn.innerText = "MARK APEX"; btn.onclick = () => { peakPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateWorkflow(); draw(); };
-            } else if (descentPt === null) {
-                btn.innerText = "MARK DESCENT"; btn.onclick = () => { descentPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateWorkflow(); draw(); };
-            } else if (endPt === null) {
-                btn.innerText = "LOCK LANDING"; btn.onclick = () => { isAdjustingSize = true; updateWorkflow(); };
-            } else { btn.innerText = "VIEW REPORT"; btn.onclick = showReportModal; }
-        }
-
-        function calculateTraceSize() {
-            const xs = activeTrace.map(pt => pt.x * video.videoWidth); const ys = activeTrace.map(pt => pt.y * video.videoHeight);
-            return Math.sqrt((Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)));
-        }
-
-        function calculateAspectRatio() {
-            const xs = activeTrace.map(pt => pt.x * video.videoWidth); const ys = activeTrace.map(pt => pt.y * video.videoHeight);
-            const w = Math.max(...xs) - Math.min(...xs); const h = Math.max(...ys) - Math.min(...ys);
-            return Math.max(w, h) / Math.min(w, h);
-        }
-
-        function confirmStartTrace() {
-            ballSizeStart = calculateTraceSize(); startAspectRatio = calculateAspectRatio();
-            startPt = {time: video.currentTime, pos: activeTap}; activeTap = null; activeTrace = []; isAdjustingSize = false; 
             updateWorkflow(); draw();
         }
 
-        function confirmEndTrace() {
-            ballSizeEnd = calculateTraceSize(); endAspectRatio = calculateAspectRatio();
-            endPt = {time: video.currentTime, pos: activeTap}; activeTap = null; activeTrace = []; isAdjustingSize = false;
-            calculateOpticsPhysics(); updateWorkflow(); draw();
-        }
+        function draw() {
+            const dpr = 3; // HIGH RES BUFFER
+            ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+            const w = canvas.width / dpr; const h = canvas.height / dpr;
 
-        // --- TWIN-FORCE DRIFT MODEL: Modeling initial angle + acceleration ---
-        function calculateOpticsPhysics() {
-            if (!startPt || !peakPt || !endPt) return;
-            const t2 = endPt.time - startPt.time;
-            const tp = peakPt.time - startPt.time;
-            const v_y0 = gravity * tp; 
-            const peakH = 0.5 * gravity * (tp * tp);
+            // Scale Dots
+            ctx.fillStyle = '#007aff';
+            scaleDots.forEach(p => { ctx.beginPath(); ctx.arc(p.x * w, p.y * h, 6, 0, Math.PI*2); ctx.fill(); });
 
-            if (peakH < 10.0) {
-                activeReport = { date: new Date().toISOString(), totalTime: t2, peakHeightFeet: peakH, maxGoodDistance: 0, missType: "Under Crossbar", launchAngle: 0, distanceYards: 0 };
-                showReportModal(); return;
+            // Trace (The Needle)
+            if (activeTrace.length > 1) {
+                ctx.strokeStyle = 'black'; ctx.lineWidth = 3; ctx.beginPath();
+                ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
+                activeTrace.forEach(p => ctx.lineTo(p.x * w, p.y * h)); ctx.stroke();
+                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1; ctx.stroke();
             }
 
-            const rawRatio = ballSizeStart / ballSizeEnd;
-            let dynamicExp = (endAspectRatio <= 1.7) ? 1.18 : Math.min(1.20 + (endAspectRatio - 1.7) * 0.10, 1.35);
-            let zDist = cameraDistance * (Math.pow(rawRatio, dynamicExp) - 1.0);
-            
-            const maxZ = (v_y0 / Math.tan(20 * Math.PI / 180)) * t2 / 3.0;
-            if (zDist > maxZ) zDist = maxZ;
-
-            const v_z0_yards = zDist / t2;
-            const p1 = scaleDots[0], p2 = scaleDots[1];
-            const yardsPerUnit = 10.0 / Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-            
-            // Solving for v_x0 and a_x using Peak and End points
-            const xp = (peakPt.pos.x - startPt.pos.x) * yardsPerUnit;
-            const xe = (endPt.pos.x - startPt.pos.x) * yardsPerUnit;
-
-            const accelX = (xe - xp * (t2 / tp)) / (0.5 * (t2 * t2 - tp * t2));
-            const vx0 = (xp - 0.5 * accelX * tp * tp) / tp;
-
-            let maxGood = 0; let missType = "Falls Short"; let hitWide = false;
-            for (let t = 0; t <= t2; t += 0.05) {
-                const z = v_z0_yards * t;
-                const x = (vx0 * t) + (0.5 * accelX * (t * t));
-                const y = (v_y0 * t) - (0.5 * gravity * (t * t));
-                if (y < 10.0 && t > tp) break; 
-                if (Math.abs(x) < 3.11) { maxGood = z; } 
-                else { hitWide = true; missType = (accelX + vx0 > 0) ? "Misses Right" : "Misses Left"; break; }
+            // Crosshair
+            if (activeTap) {
+                const s = { x: activeTap.x * w, y: activeTap.y * h };
+                ctx.strokeStyle = 'black'; ctx.lineWidth = 3; ctx.beginPath();
+                ctx.moveTo(s.x-10, s.y); ctx.lineTo(s.x+10, s.y); ctx.moveTo(s.x, s.y-10); ctx.lineTo(s.x, s.y+10); ctx.stroke();
+                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1; ctx.stroke();
             }
 
-            activeReport = {
-                date: new Date().toISOString(), totalTime: t2, peakHeightFeet: peakH, distanceYards: zDist, maxGoodDistance: maxGood,
-                launchAngle: Math.atan2(v_y0, v_z0_yards * 3.0) * (180/Math.PI),
-                missType: hitWide ? missType : "Falls Short"
-            };
-            let history = JSON.parse(localStorage.getItem('kickHistory')) || []; history.unshift(activeReport); localStorage.setItem('kickHistory', JSON.stringify(history));
-            showReportModal();
+            const drawM = (pt, color) => { if(pt) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pt.pos.x * w, pt.pos.y * h, 5, 0, Math.PI*2); ctx.fill(); } };
+            drawM(startPt, '#34c759'); drawM(peakPt, '#ff9500'); drawM(endPt, '#ff3b30');
         }
 
-        function showReportModal() {
-            if (!activeReport) return;
-            document.getElementById('rep-max').innerText = `≤ ${Math.floor(activeReport.maxGoodDistance)} yds`;
-            document.getElementById('rep-past-label').innerText = `Past ${Math.floor(activeReport.maxGoodDistance)} yds`;
-            document.getElementById('rep-miss').innerText = activeReport.missType;
-            document.getElementById('rep-time').innerText = `${activeReport.totalTime.toFixed(2)}s`;
-            document.getElementById('rep-height').innerText = `${activeReport.peakHeightFeet.toFixed(1)} ft`;
-            document.getElementById('rep-angle').innerText = `${activeReport.launchAngle.toFixed(1)}°`;
-            document.getElementById('rep-depth').innerText = `${activeReport.distanceYards.toFixed(1)} yds`;
-            document.getElementById('report-modal').style.display = 'flex';
+        function updateWorkflow() {
+            const btn = document.getElementById('btn-workflow');
+            btn.disabled = false;
+            if (scaleDots.length < 2) {
+                btn.innerText = `SET SCALE DOT ${scaleDots.length + 1}`;
+                btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
+            } else if (!startPt) {
+                btn.innerText = "LOCK IMPACT TRACE";
+                btn.onclick = () => {
+                    ballSizeStart = calculateTraceSize(); startAspectRatio = calculateAspectRatio();
+                    startPt = { time: video.currentTime, pos: activeTap }; activeTap = null; activeTrace = []; updateWorkflow(); draw();
+                };
+            } else if (!peakPt) {
+                btn.innerText = "MARK APEX";
+                btn.onclick = () => { peakPt = { time: video.currentTime, pos: activeTap }; activeTap = null; updateWorkflow(); draw(); };
+            } else if (!endPt) {
+                btn.innerText = "FINALIZE LANDING TRACE";
+                btn.onclick = () => {
+                    ballSizeEnd = calculateTraceSize(); endAspectRatio = calculateAspectRatio();
+                    endPt = { time: video.currentTime, pos: activeTap }; activeTap = null; activeTrace = []; calculatePhysics(); draw();
+                };
+            } else {
+                btn.innerText = "VIEW REPORT"; btn.onclick = () => document.getElementById('report-modal').style.display='flex';
+            }
         }
 
-        function togglePlay() { if (video.paused) { video.play(); document.getElementById('btn-playpause').innerText = '⏸'; } else { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; } }
+        function calculateTraceSize() {
+            const xs = activeTrace.map(p => p.x * video.videoWidth); const ys = activeTrace.map(p => p.y * video.videoHeight);
+            return Math.sqrt((Math.max(...xs)-Math.min(...xs)) * (Math.max(...ys)-Math.min(...ys)));
+        }
+
+        function calculateAspectRatio() {
+            const xs = activeTrace.map(p => p.x * video.videoWidth); const ys = activeTrace.map(p => p.y * video.videoHeight);
+            return (Math.max(...xs)-Math.min(...xs)) / (Math.max(...ys)-Math.min(...ys));
+        }
+
+        function calculatePhysics() {
+            const t = endPt.time - startPt.time; const tp = peakPt.time - startPt.time;
+            const vy0 = gravity * tp; const peakH = 0.5 * gravity * (tp * tp);
+            const rawR = ballSizeStart / ballSizeEnd;
+            const exp = (endAspectRatio <= 1.7) ? 1.18 : Math.min(1.2 + (endAspectRatio-1.7)*0.1, 1.35);
+            let dist = cameraDistance * (Math.pow(rawR, exp) - 1);
+            const vz = dist / t;
+            const yardsPerUnit = 10 / Math.sqrt(Math.pow(scaleDots[1].x-scaleDots[0].x, 2) + Math.pow(scaleDots[1].y-scaleDots[0].y, 2));
+            const drift = (endPt.pos.x - startPt.pos.x) * yardsPerUnit;
+            const vx = drift / t;
+            
+            const crossT = (vy0 + Math.sqrt(vy0*vy0 - 4*0.5*gravity*10)) / gravity;
+            const hLim = vz * crossT; const tWide = 3.11 / Math.abs(vx || 0.001);
+            const mg = Math.min(hLim, vz * tWide);
+
+            document.getElementById('rep-max').innerText = Math.floor(mg) + " yds";
+            document.getElementById('rep-miss').innerText = (vz * tWide < hLim) ? (vx > 0 ? "Miss Left" : "Miss Right") : "Falls Short";
+            document.getElementById('rep-height').innerText = Math.floor(peakH) + " ft";
+            document.getElementById('rep-depth').innerText = Math.floor(dist) + " yds";
+            updateWorkflow();
+        }
+
+        function togglePlay() { if (video.paused) { video.play(); } else { video.pause(); } }
         function stepFrame(f) { video.pause(); video.currentTime += (1/30) * f; }
-        
-        function resetAll() {
-            scaleDots = []; startPt = null; ascentPt = null; peakPt = null; descentPt = null; endPt = null;
-            zoomLevel = 1.0; activeTap = null; updateZoomTransform(); document.getElementById('zoom-slider').value = 1;
-            video.currentTime = 0; updateWorkflow(); draw();
-        }
-
         function setupVideoUI() {
-            isVideoLoaded = true; document.getElementById('upload-placeholder').style.display = 'none';
-            document.getElementById('btn-reset').style.display = 'inline-block'; document.getElementById('btn-new').style.display = 'inline-block';
-            zoomWrapper.style.display = 'flex'; document.getElementById('persistent-controls').style.display = 'flex';
-            
-            const dpr = window.devicePixelRatio || 1;
-            const rect = document.getElementById('viewport-container').getBoundingClientRect();
+            isVideoLoaded = true; zoomWrapper.style.display = 'flex'; document.getElementById('persistent-controls').style.display = 'block';
+            const dpr = 3; const rect = video.getBoundingClientRect();
             canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            
-            scrubber.max = video.duration; resetAll();
+            ctx.scale(dpr, dpr); scrubber.max = video.duration; resetAll();
         }
+        function resetAll() { scaleDots = []; startPt = null; peakPt = null; endPt = null; activeTap = null; activeTrace = []; updateWorkflow(); draw(); }
     </script>
 </body>
 </html>
