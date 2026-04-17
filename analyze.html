@@ -9,38 +9,40 @@
     <title>Analyze Video</title>
     <style>
         body { font-family: -apple-system, sans-serif; margin: 0; background-color: #000; color: #fff; display: flex; flex-direction: column; height: 100dvh; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); overflow: hidden; box-sizing: border-box; }
-        .sys-buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px; background-color: #1c1c1e; z-index: 50; }
+        
+        .sys-buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px; background-color: #1c1c1e; z-index: 30; }
         .sys-buttons button { padding: 6px 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; }
         #btn-home { background: #007aff; color: white; margin-right: auto; }
         #btn-reset { background: #3a3a3c; color: white; display: none; }
         #btn-new { background: #ff3b30; color: white; display: none; }
         #file-upload { display: none; }
 
-        .dashboard { background-color: #1c1c1e; padding: 10px 16px; display: flex; flex-direction: column; gap: 10px; z-index: 50; }
+        .dashboard { background-color: #1c1c1e; padding: 10px 16px; display: flex; flex-direction: column; gap: 10px; z-index: 30; }
         .row { display: flex; align-items: center; gap: 10px; justify-content: center; }
+        
         select, input[type="range"] { padding: 4px; border-radius: 4px; background: #2c2c2e; color: white; border: 1px solid #3a3a3c; }
 
         .results-box { background-color: #2c2c2e; padding: 8px; border-radius: 8px; font-family: monospace; font-size: 13px; min-height: 20px; text-align: center; }
 
         .viewport-container { flex-grow: 1; position: relative; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
         
-        /* The Wrapper: Contains both video and canvas for perfect sync */
-        .zoom-wrapper { position: relative; display: flex; align-items: center; justify-content: center; transition: transform 0.05s linear; transform-origin: center center; }
-        
+        /* Video Layer: Zooms and pans independently */
+        .zoom-wrapper { position: absolute; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; transition: transform 0.05s linear; transform-origin: center center; z-index: 1; }
         video { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; }
 
-        /* The Canvas: Now a child of the zoom-wrapper so it scales with the video */
+        /* Canvas Layer: Stays sharp at screen resolution */
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; z-index: 20; }
 
-        .upload-placeholder { position: absolute; color: #007aff; font-weight: bold; cursor: pointer; z-index: 25; }
+        .upload-placeholder { position: absolute; color: #007aff; font-weight: bold; cursor: pointer; z-index: 25; text-decoration: underline; }
 
-        .controls { background-color: #1c1c1e; padding: 10px; display: flex; flex-direction: column; gap: 10px; z-index: 50; }
+        .controls { background-color: #1c1c1e; padding: 10px; display: flex; flex-direction: column; gap: 10px; z-index: 30; }
         .playback-row { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
         .playback-row button { background: none; border: none; color: white; font-size: 16px; cursor: pointer; }
 
-        .workflow-bar { background-color: #1c1c1e; padding: 15px; display: flex; justify-content: center; z-index: 50; }
+        .workflow-bar { background-color: #1c1c1e; padding: 15px; display: flex; justify-content: center; z-index: 30; }
         .workflow-btn { width: 100%; padding: 16px; font-size: 18px; font-weight: bold; border: none; border-radius: 12px; cursor: pointer; color: white; background: #3a3a3c; }
 
+        /* Report Modal */
         #report-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; align-items: center; justify-content: center; }
         .report-content { background: #1c1c1e; width: 90%; max-width: 400px; border-radius: 16px; padding: 20px; max-height: 85vh; overflow-y: auto; }
         .report-section { background: #2c2c2e; border-radius: 10px; padding: 10px 15px; margin-bottom: 15px; }
@@ -71,15 +73,15 @@
             Cam Depth (Yds): <span id="depth-val">15</span>
             <input type="range" id="cam-depth" min="5" max="50" step="1" value="15" style="flex-grow:1;">
         </div>
-        <div class="results-box" id="results-text">Trace scale or impact point.</div>
+        <div class="results-box" id="results-text">Upload a video to begin analysis.</div>
     </div>
 
     <div class="viewport-container" id="viewport-container">
         <div class="upload-placeholder" id="upload-placeholder" onclick="document.getElementById('file-upload').click()">Upload Video</div>
         <div class="zoom-wrapper" id="zoom-wrapper" style="display: none;">
             <video id="video-player" playsinline muted></video>
-            <canvas id="overlay"></canvas>
         </div>
+        <canvas id="overlay"></canvas>
     </div>
 
     <div class="controls" id="persistent-controls" style="display: none;">
@@ -150,13 +152,11 @@
             cameraDistance = parseFloat(e.target.value); document.getElementById('depth-val').innerText = cameraDistance;
         });
 
-        // --- FIXED ZOOM LOGIC: Centers exactly on activeTap ---
         document.getElementById('zoom-slider').addEventListener('input', (e) => {
             zoomLevel = parseFloat(e.target.value);
             document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
             
             if (activeTap) {
-                // Origin is set to the percentage of the video where you tapped
                 zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
             } else {
                 zoomWrapper.style.transformOrigin = 'center center';
@@ -169,13 +169,8 @@
         scrubber.addEventListener('input', (e) => { isScrubbing = true; video.currentTime = e.target.value; });
         scrubber.addEventListener('change', () => { isScrubbing = false; });
 
-        // --- SIMPLIFIED COORDINATES: Taps are relative to the video pixels ---
         canvas.addEventListener('pointerdown', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width;
-            const y = (e.clientY - rect.top) / rect.height;
-            const pt = { x, y };
-
+            const pt = mapScreenToVideo(e.clientX, e.clientY);
             if (isAdjustingSize) { isDrawingTrace = true; activeTrace = [pt]; } 
             else { handleTap(pt); }
             draw();
@@ -183,58 +178,69 @@
 
         canvas.addEventListener('pointermove', (e) => {
             if (!isDrawingTrace) return;
-            const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width;
-            const y = (e.clientY - rect.top) / rect.height;
-            activeTrace.push({ x, y });
+            activeTrace.push(mapScreenToVideo(e.clientX, e.clientY));
             draw();
         });
 
         canvas.addEventListener('pointerup', () => { isDrawingTrace = false; updateWorkflow(); });
 
+        function mapScreenToVideo(clientX, clientY) {
+            const vRect = video.getBoundingClientRect();
+            const x = (clientX - vRect.left) / vRect.width;
+            const y = (clientY - vRect.top) / vRect.height;
+            return { x, y };
+        }
+
+        function mapVideoToScreen(vx, vy) {
+            const vRect = video.getBoundingClientRect();
+            const cRect = canvas.getBoundingClientRect();
+            const sx = (vx * vRect.width + vRect.left) - cRect.left;
+            const sy = (vy * vRect.height + vRect.top) - cRect.top;
+            return { x: sx, y: sy };
+        }
+
         function handleTap(pt) {
             activeTap = pt;
-            // Immediate re-center zoom when tapping while zoomed
             zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
             zoomWrapper.style.transform = `scale(${zoomLevel})`;
             updateWorkflow();
             draw();
         }
 
-        // --- DRAWING: SHARP RETINA Child-Canvas ---
         function draw() {
-            ctx.clearRect(0, 0, canvas.width / 3, canvas.height / 3);
+            ctx.clearRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
             ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            const w = canvas.width / 3;
-            const h = canvas.height / 3;
 
-            // Markers are drawn in un-zoomed space, but scaling is handled by CSS
             scaleDots.forEach(pt => { 
-                ctx.fillStyle = '#007aff'; ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, 8 / zoomLevel, 0, Math.PI * 2); ctx.fill(); 
+                const s = mapVideoToScreen(pt.x, pt.y);
+                ctx.fillStyle = '#007aff'; ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, Math.PI * 2); ctx.fill(); 
             });
 
             if (isAdjustingSize && activeTrace.length > 0) {
-                ctx.strokeStyle = 'black'; ctx.lineWidth = 3 / zoomLevel;
+                ctx.strokeStyle = 'black'; ctx.lineWidth = 3.5;
                 ctx.beginPath(); 
-                ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
+                const s0 = mapVideoToScreen(activeTrace[0].x, activeTrace[0].y);
+                ctx.moveTo(s0.x, s0.y);
                 for (let i = 1; i < activeTrace.length; i++) {
-                    ctx.lineTo(activeTrace[i].x * w, activeTrace[i].y * h);
+                    const si = mapVideoToScreen(activeTrace[i].x, activeTrace[i].y);
+                    ctx.lineTo(si.x, si.y);
                 }
                 ctx.stroke();
-                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1 / zoomLevel; ctx.stroke();
+                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1.2; ctx.stroke();
             }
 
             if (activeTap && !isAdjustingSize) {
-                const px = activeTap.x * w; const py = activeTap.y * h;
-                const len = 15 / zoomLevel;
-                ctx.strokeStyle = 'black'; ctx.lineWidth = 3 / zoomLevel;
-                ctx.beginPath(); ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); ctx.stroke();
-                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1 / zoomLevel; ctx.stroke();
+                const s = mapVideoToScreen(activeTap.x, activeTap.y);
+                const len = 15;
+                ctx.strokeStyle = 'black'; ctx.lineWidth = 3.5;
+                ctx.beginPath(); ctx.moveTo(s.x, s.y - len); ctx.lineTo(s.x, s.y + len); ctx.moveTo(s.x - len, s.y); ctx.lineTo(s.x + len, s.y); ctx.stroke();
+                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1.2; ctx.stroke();
             }
 
             const drawMarker = (pt, color) => {
                 if (!pt) return; 
-                ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pt.pos.x * w, pt.pos.y * h, 6 / zoomLevel, 0, Math.PI * 2); ctx.fill();
+                const s = mapVideoToScreen(pt.pos.x, pt.pos.y);
+                ctx.fillStyle = color; ctx.beginPath(); ctx.arc(s.x, s.y, 6, 0, Math.PI * 2); ctx.fill();
             };
             drawMarker(startPt, '#34c759'); drawMarker(ascentPt, '#ffcc00'); drawMarker(peakPt, '#ff9500'); drawMarker(descentPt, '#ffcc00'); drawMarker(endPt, '#ff3b30'); 
         }
@@ -295,6 +301,11 @@
             const totalTime = Math.abs(endPt.time - startPt.time); const timeToPeak = Math.abs(peakPt.time - startPt.time);
             const v_y0_ft = gravity * timeToPeak; const peakH_ft = 0.5 * gravity * (timeToPeak * timeToPeak);
 
+            if (peakH_ft < 10.0) {
+                activeReport = { date: new Date().toISOString(), totalTime, peakHeightFeet: peakH_ft, maxGoodDistance: 0, missType: "Under Crossbar", launchAngle: 0, distanceYards: 0 };
+                showReportModal(); return;
+            }
+
             const rawRatio = ballSizeStart / ballSizeEnd;
             let dynamicExponent = (endAspectRatio <= 1.7) ? 1.18 : Math.min(1.20 + (endAspectRatio - 1.7) * 0.10, 1.35);
             let zDistanceYards = cameraDistance * (Math.pow(rawRatio, dynamicExponent) - 1.0);
@@ -306,12 +317,17 @@
             const p1 = scaleDots[0], p2 = scaleDots[1];
             const yardsPerUnit = 10.0 / Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
             
+            // QUADRATIC SIMULATION FOR HOOKS
+            const pts = [startPt, ascentPt, peakPt, descentPt, endPt].filter(p => p !== null);
             const dxEnd = (endPt.pos.x - startPt.pos.x) * yardsPerUnit;
-            const accelX = (2 * dxEnd) / (totalTime * totalTime);
+            const t2 = totalTime;
+            const accelX = (2 * dxEnd) / (t2 * t2);
 
             let maxGood = 0; let missType = "Falls Short"; let hitWide = false;
+
             for (let t = 0; t <= totalTime; t += 0.05) {
-                const z = v_z0_yards * t; const x = 0.5 * accelX * (t * t);
+                const z = v_z0_yards * t;
+                const x = 0.5 * accelX * (t * t);
                 const y = (v_y0_ft * t) - (0.5 * gravity * (t * t));
                 if (y < 10.0 && t > timeToPeak) break; 
                 if (Math.abs(x) < 3.11) { maxGood = z; } 
@@ -330,6 +346,7 @@
         function showReportModal() {
             if (!activeReport) return;
             document.getElementById('rep-max').innerText = `≤ ${Math.floor(activeReport.maxGoodDistance)} yds`;
+            document.getElementById('rep-past-label').innerText = `Past ${Math.floor(activeReport.maxGoodDistance)} yds`;
             document.getElementById('rep-miss').innerText = activeReport.missType;
             document.getElementById('rep-time').innerText = `${activeReport.totalTime.toFixed(2)}s`;
             document.getElementById('rep-height').innerText = `${activeReport.peakHeightFeet.toFixed(1)} ft`;
@@ -352,11 +369,10 @@
             document.getElementById('btn-reset').style.display = 'inline-block'; document.getElementById('btn-new').style.display = 'inline-block';
             zoomWrapper.style.display = 'flex'; document.getElementById('persistent-controls').style.display = 'flex';
             
-            // TRIPLE-RESOLUTION SETUP for zoom clarity
-            const rect = video.getBoundingClientRect();
-            canvas.width = rect.width * 3;
-            canvas.height = rect.height * 3;
-            ctx.scale(3, 3);
+            const dpr = window.devicePixelRatio || 1;
+            const rect = document.getElementById('viewport-container').getBoundingClientRect();
+            canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             
             scrubber.max = video.duration; resetAll();
         }
