@@ -86,7 +86,7 @@
             display: inline-flex; 
             max-width: 100%;
             max-height: 100%;
-            transition: transform 0.1s ease-out; /* Snappier for slider */
+            transition: transform 0.1s ease-out; 
             transform-origin: center center;
         }
 
@@ -311,6 +311,17 @@
 
         let startPt = null; let ascentPt = null; let peakPt = null; let descentPt = null; let endPt = null;
 
+        // NEW FUNCTION: Dynamically calculate internal canvas pixels
+        function updateCanvasResolution() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = video.getBoundingClientRect();
+            const baseWidth = rect.width / zoomLevel;
+            const baseHeight = rect.height / zoomLevel;
+
+            canvas.width = baseWidth * zoomLevel * dpr;
+            canvas.height = baseHeight * zoomLevel * dpr;
+        }
+
         document.getElementById('file-upload').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -324,17 +335,19 @@
             document.getElementById('depth-val').innerText = cameraDistance;
         });
 
-        // NEW: Zoom Slider Listener
         document.getElementById('zoom-slider').addEventListener('input', (e) => {
             zoomLevel = parseFloat(e.target.value);
             document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
             zoomWrapper.style.transform = `scale(${zoomLevel})`;
+            
             if (activeTap) {
                 zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
             } else {
                 zoomWrapper.style.transformOrigin = 'center center';
             }
-            draw(); 
+            
+            updateCanvasResolution(); // Scale resolution
+            draw(); // Redraw crisp lines
         });
 
         video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
@@ -367,20 +380,23 @@
             updateWorkflow();
         }
 
-        // UPDATED: High-Contrast drawing with constant thickness
+        // UPDATED: High-DPI draw function without manual invZoom calculations
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const w = canvas.width; const h = canvas.height;
-            const invZoom = 1.0 / zoomLevel;
+            const w = canvas.width; 
+            const h = canvas.height;
+            const dpr = window.devicePixelRatio || 1;
 
-            ctx.strokeStyle = '#ffff00'; // Neon Yellow
-            ctx.lineWidth = 2.5;         // FIXED SCREEN WIDTH
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 2.5 * dpr;          
             ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.shadowColor = 'black'; ctx.shadowBlur = 2;
+            ctx.shadowColor = 'black'; ctx.shadowBlur = 2 * dpr;
 
             ctx.fillStyle = '#007aff';
             scaleDots.forEach(pt => {
-                ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, 8 * invZoom, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); 
+                ctx.arc(pt.x * w, pt.y * h, 6 * dpr, 0, Math.PI * 2); 
+                ctx.fill();
             });
 
             if (isAdjustingSize && activeTrace.length > 0) {
@@ -390,16 +406,28 @@
             }
 
             if (activeTap && !isAdjustingSize) {
-                const px = activeTap.x * w; const py = activeTap.y * h; const len = 12 * invZoom;
-                ctx.beginPath(); ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); ctx.stroke();
+                const px = activeTap.x * w; 
+                const py = activeTap.y * h; 
+                const len = 12 * dpr;
+                ctx.beginPath(); 
+                ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); 
+                ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); 
+                ctx.stroke();
             }
 
             ctx.shadowBlur = 0;
-            const dotRad = 6 * invZoom;
+            const dotRad = 6 * dpr;
             const drawMarker = (pt, color) => {
-                if (!pt) return; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2); ctx.fill();
+                if (!pt) return; 
+                ctx.fillStyle = color; 
+                ctx.beginPath(); 
+                ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2); 
+                ctx.fill();
             };
-            drawMarker(startPt, '#34c759'); drawMarker(ascentPt, '#ffcc00'); drawMarker(peakPt, '#ff9500'); drawMarker(descentPt, '#ffcc00'); drawMarker(endPt, '#ff3b30'); 
+            
+            drawMarker(startPt, '#34c759'); drawMarker(ascentPt, '#ffcc00'); 
+            drawMarker(peakPt, '#ff9500'); drawMarker(descentPt, '#ffcc00'); 
+            drawMarker(endPt, '#ff3b30'); 
         }
 
         function updateWorkflow() {
@@ -448,13 +476,24 @@
 
         function calculateTraceSize() {
             if (activeTrace.length === 0) return 10.0;
-            const xs = activeTrace.map(pt => pt.x * canvas.width); const ys = activeTrace.map(pt => pt.y * canvas.height);
+            // Adjusted to normalize out the dynamic zoom/dpr so physics stay perfectly consistent
+            const dpr = window.devicePixelRatio || 1;
+            const baseW = canvas.width / (zoomLevel * dpr);
+            const baseH = canvas.height / (zoomLevel * dpr);
+            
+            const xs = activeTrace.map(pt => pt.x * baseW); 
+            const ys = activeTrace.map(pt => pt.y * baseH);
             return Math.sqrt(Math.max((Math.max(...xs) - Math.min(...xs)), 2.0) * Math.max((Math.max(...ys) - Math.min(...ys)), 2.0));
         }
 
         function calculateAspectRatio() {
             if (activeTrace.length === 0) return 1.0;
-            const xs = activeTrace.map(pt => pt.x * canvas.width); const ys = activeTrace.map(pt => pt.y * canvas.height);
+            const dpr = window.devicePixelRatio || 1;
+            const baseW = canvas.width / (zoomLevel * dpr);
+            const baseH = canvas.height / (zoomLevel * dpr);
+
+            const xs = activeTrace.map(pt => pt.x * baseW); 
+            const ys = activeTrace.map(pt => pt.y * baseH);
             const w = Math.max((Math.max(...xs) - Math.min(...xs)), 1.0); const h = Math.max((Math.max(...ys) - Math.min(...ys)), 1.0);
             return Math.max(w, h) / Math.min(w, h);
         }
@@ -464,7 +503,9 @@
             startPt = {time: video.currentTime, pos: activeTap}; activeTap = null; activeTrace = []; isAdjustingSize = false; 
             zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`; 
             document.getElementById('zoom-slider').value = 1; document.getElementById('zoom-val').innerText = '1x';
-            document.getElementById('results-text').innerText = "2. Scrub to half UP. Tap ball."; updateWorkflow(); draw();
+            document.getElementById('results-text').innerText = "2. Scrub to half UP. Tap ball."; 
+            updateCanvasResolution(); // Reset resolution on zoom out
+            updateWorkflow(); draw();
         }
 
         function confirmEndTrace() {
@@ -472,6 +513,7 @@
             endPt = {time: video.currentTime, pos: activeTap}; activeTap = null; activeTrace = []; isAdjustingSize = false;
             zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`; 
             document.getElementById('zoom-slider').value = 1; document.getElementById('zoom-val').innerText = '1x';
+            updateCanvasResolution(); // Reset resolution on zoom out
             calculateOpticsPhysics(); updateWorkflow(); draw();
         }
 
@@ -545,14 +587,22 @@
             zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`; 
             document.getElementById('zoom-slider').value = 1; document.getElementById('zoom-val').innerText = '1x';
             document.getElementById('results-text').innerText = "Set Depth. Tap 1st scale dot.";
-            video.pause(); video.currentTime = 0; scrubber.value = 0; updateWorkflow(); draw();
+            video.pause(); video.currentTime = 0; scrubber.value = 0; 
+            if (isVideoLoaded) updateCanvasResolution();
+            updateWorkflow(); draw();
         }
 
         function setupVideoUI() {
             isVideoLoaded = true; document.getElementById('upload-placeholder').style.display = 'none';
             document.getElementById('btn-reset').style.display = 'inline-block'; document.getElementById('btn-new').style.display = 'inline-block';
             zoomWrapper.style.display = 'inline-flex'; document.getElementById('persistent-controls').style.display = 'flex';
-            setTimeout(() => { canvas.width = video.getBoundingClientRect().width; canvas.height = video.getBoundingClientRect().height; draw(); }, 50);
+            
+            // UPDATED: Use dynamic resolution check instead of hardcoded bounding box
+            setTimeout(() => { 
+                updateCanvasResolution();
+                draw(); 
+            }, 50);
+            
             scrubber.max = video.duration; resetAll(); updateWorkflow();
         }
 
