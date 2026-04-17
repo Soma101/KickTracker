@@ -86,7 +86,7 @@
             display: inline-flex; 
             max-width: 100%;
             max-height: 100%;
-            transition: transform 0.1s ease-out;
+            transition: transform 0.05s linear; /* Faster for tracing */
             transform-origin: center center;
         }
 
@@ -211,10 +211,6 @@
     </div>
 
     <div class="viewport-container" id="viewport-container">
-        <div class="upload-placeholder" id="upload-placeholder" onclick="document.getElementById('file-upload').click()">
-            Upload Video
-        </div>
-        
         <div class="zoom-wrapper" id="zoom-wrapper" style="display: none;">
             <video id="video-player" playsinline></video>
             <canvas id="overlay"></canvas>
@@ -329,35 +325,46 @@
             updateWorkflow();
         }
 
-        // --- DRAWING: SCALING PRECISION ---
+        // --- DRAWING: SHARP PRECISION FIX ---
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const w = canvas.width; const h = canvas.height;
             const invZoom = 1.0 / zoomLevel;
 
-            // DYNAMIC LINE WIDTH: Gets thinner relative to screen as you zoom in
-            ctx.strokeStyle = '#ffff00';
-            ctx.lineWidth = 2.5 * invZoom; 
+            // REMOVED SHADOWBLUR: Using double-stroke for sharp outlines
             ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.shadowColor = 'black'; ctx.shadowBlur = 1;
 
+            // 1. Draw Scale Dots (Blue)
             ctx.fillStyle = '#007aff';
             scaleDots.forEach(pt => {
                 ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, 8 * invZoom, 0, Math.PI * 2); ctx.fill();
             });
 
+            // 2. Draw Trace Path (High Precision Sharp Outline)
             if (isAdjustingSize && activeTrace.length > 0) {
+                // Outer Black Outline
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 4.0 * invZoom; 
                 ctx.beginPath(); ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
                 for (let i = 1; i < activeTrace.length; i++) ctx.lineTo(activeTrace[i].x * w, activeTrace[i].y * h);
                 ctx.stroke();
+
+                // Inner Yellow Needle
+                ctx.strokeStyle = '#ffff00';
+                ctx.lineWidth = 1.5 * invZoom; 
+                ctx.stroke();
             }
 
+            // 3. Draw Crosshair
             if (activeTap && !isAdjustingSize) {
                 const px = activeTap.x * w; const py = activeTap.y * h; const len = 12 * invZoom;
+                // Black Outline
+                ctx.strokeStyle = 'black'; ctx.lineWidth = 4.0 * invZoom;
                 ctx.beginPath(); ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); ctx.stroke();
+                // Yellow Needle
+                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1.5 * invZoom; ctx.stroke();
             }
 
-            ctx.shadowBlur = 0;
             const dotRad = 6 * invZoom;
             const drawMarker = (pt, color) => {
                 if (!pt) return; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2); ctx.fill();
@@ -397,7 +404,7 @@
                 btn.onclick = () => { descentPt = {time: video.currentTime, pos: activeTap}; activeTap = null; document.getElementById('results-text').innerText = "5. Scrub to LANDING. Tap ball."; updateWorkflow(); draw(); };
             } else if (endPt === null) {
                 btn.innerText = "LOCK LANDING"; btn.style.background = '#ff3b30'; btn.disabled = (activeTap === null);
-                btn.onclick = () => { isAdjustingSize = true; document.getElementById('results-text').innerText = "Trace landing outline."; updateWorkflow(); };
+                btn.onclick = () => { isAdjustingSize = true; document.getElementById('results-text').innerText = "Trace landing outline."; };
             } else { btn.innerText = "VIEW REPORT"; btn.style.background = '#007aff'; btn.onclick = showReportModal; }
         }
 
@@ -435,7 +442,6 @@
             const totalTime = Math.abs(endPt.time - startPt.time); const timeToPeak = Math.abs(peakPt.time - startPt.time);
             const v_y0_ft = gravity * timeToPeak; const peakH_ft = 0.5 * gravity * (timeToPeak * timeToPeak);
 
-            // SQUIB SAFETY: Peak Height must clear 10ft bar
             if (peakH_ft < 10.0) {
                 activeReport = {
                     date: new Date().toISOString(), totalTime, peakHeightFeet: peakH_ft, maxGoodDistance: 0, missType: "Under Crossbar",
@@ -475,12 +481,15 @@
             const crossbarTime = disc > 0 ? (-b + Math.sqrt(disc)) / (2 * a) : totalTime;
             const heightLimit = v_z0_yards * crossbarTime;
             const timeWide = Math.abs(v_x_yards) > 0.01 ? 3.11 / Math.abs(v_x_yards) : Infinity;
+            
+            // PRIORITY LOGIC: If it misses wide before it hits height limit, it's a wide miss.
             const maxGoodDistance = Math.min(heightLimit, v_z0_yards * timeWide);
 
             const launchAngleDeg = Math.atan2(v_y0_ft, (v_z0_ft > 0 ? v_z0_ft : 0.001)) * (180.0 / Math.PI);
             activeReport = {
                 date: new Date().toISOString(), totalTime, timeToPeak, distanceYards: zDistanceYards, peakHeightFeet: peakH_ft,
-                launchAngle: launchAngleDeg, horizontalVelocity: v_z0_ft, maxGoodDistance, missType: (v_z0_yards * timeWide < heightLimit) ? (v_x_yards > 0 ? "Misses Right" : "Misses Left") : "Falls Short",
+                launchAngle: launchAngleDeg, horizontalVelocity: v_z0_ft, maxGoodDistance, 
+                missType: (v_z0_yards * timeWide < heightLimit) ? (v_x_yards > 0 ? "Misses Right" : "Misses Left") : "Falls Short",
                 angleWarning: (launchAngleDeg < 15) ? `⚠️ Flat Ang: ${launchAngleDeg.toFixed(1)}°` : (launchAngleDeg > 65 ? `⚠️ Steep Ang: ${launchAngleDeg.toFixed(1)}°` : null)
             };
             let history = JSON.parse(localStorage.getItem('kickHistory')) || []; history.unshift(activeReport); localStorage.setItem('kickHistory', JSON.stringify(history));
