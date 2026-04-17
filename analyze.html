@@ -86,7 +86,7 @@
             display: inline-flex; 
             max-width: 100%;
             max-height: 100%;
-            transition: transform 0.1s ease-out; /* Snappier for slider */
+            transition: transform 0.1s ease-out;
             transform-origin: center center;
         }
 
@@ -105,18 +105,6 @@
             width: 100%;
             height: 100%;
             touch-action: none; 
-        }
-
-        .upload-placeholder {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: #8e8e93;
-            cursor: pointer;
         }
 
         .controls {
@@ -161,7 +149,6 @@
             background: #3a3a3c;
         }
 
-        /* Modal Styles */
         #report-modal {
             display: none;
             position: fixed;
@@ -225,7 +212,6 @@
 
     <div class="viewport-container" id="viewport-container">
         <div class="upload-placeholder" id="upload-placeholder" onclick="document.getElementById('file-upload').click()">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:10px;"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
             Upload Video
         </div>
         
@@ -292,48 +278,28 @@
         const zoomWrapper = document.getElementById('zoom-wrapper');
         const scrubber = document.getElementById('scrubber');
         
-        let isVideoLoaded = false;
-        let isScrubbing = false;
-        let activeReport = null;
-
-        let cameraDistance = 15.0;
-        let ballSizeStart = 10.0;
-        let ballSizeEnd = 10.0;
-        let startAspectRatio = 1.0; 
-        let endAspectRatio = 1.0;   
-        let isAdjustingSize = false;
-        let zoomLevel = 1.0;
-        
-        let scaleDots = []; 
-        let activeTap = null;
-        let activeTrace = []; 
-        let isDrawingTrace = false;
-
+        let isVideoLoaded = false; let isScrubbing = false; let activeReport = null;
+        let cameraDistance = 15.0; let ballSizeStart = 10.0; let ballSizeEnd = 10.0;
+        let startAspectRatio = 1.0; let endAspectRatio = 1.0; let isAdjustingSize = false; let zoomLevel = 1.0;
+        let scaleDots = []; let activeTap = null; let activeTrace = []; let isDrawingTrace = false;
         let startPt = null; let ascentPt = null; let peakPt = null; let descentPt = null; let endPt = null;
 
         document.getElementById('file-upload').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            video.src = URL.createObjectURL(file);
-            video.load();
+            const file = e.target.files[0]; if (!file) return;
+            video.src = URL.createObjectURL(file); video.load();
             video.onloadeddata = () => { setupVideoUI(); };
         });
 
         document.getElementById('cam-depth').addEventListener('input', (e) => {
-            cameraDistance = parseFloat(e.target.value);
-            document.getElementById('depth-val').innerText = cameraDistance;
+            cameraDistance = parseFloat(e.target.value); document.getElementById('depth-val').innerText = cameraDistance;
         });
 
-        // NEW: Zoom Slider Listener
         document.getElementById('zoom-slider').addEventListener('input', (e) => {
             zoomLevel = parseFloat(e.target.value);
             document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
             zoomWrapper.style.transform = `scale(${zoomLevel})`;
-            if (activeTap) {
-                zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
-            } else {
-                zoomWrapper.style.transformOrigin = 'center center';
-            }
+            if (activeTap) zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
+            else zoomWrapper.style.transformOrigin = 'center center';
             draw(); 
         });
 
@@ -343,20 +309,16 @@
 
         canvas.addEventListener('pointerdown', (e) => {
             const rect = canvas.getBoundingClientRect();
-            const x = ((e.clientX - rect.left) / rect.width);
-            const y = ((e.clientY - rect.top) / rect.height);
-            if (isAdjustingSize) { isDrawingTrace = true; activeTrace.push({x, y}); } 
-            else { handleTap({x, y}); }
+            const x = ((e.clientX - rect.left) / rect.width); const y = ((e.clientY - rect.top) / rect.height);
+            if (isAdjustingSize) { isDrawingTrace = true; activeTrace.push({x, y}); } else { handleTap({x, y}); }
             draw();
         });
 
         canvas.addEventListener('pointermove', (e) => {
             if (!isDrawingTrace) return;
             const rect = canvas.getBoundingClientRect();
-            const x = ((e.clientX - rect.left) / rect.width);
-            const y = ((e.clientY - rect.top) / rect.height);
-            activeTrace.push({x, y});
-            draw();
+            const x = ((e.clientX - rect.left) / rect.width); const y = ((e.clientY - rect.top) / rect.height);
+            activeTrace.push({x, y}); draw();
         });
 
         canvas.addEventListener('pointerup', () => { isDrawingTrace = false; updateWorkflow(); });
@@ -367,16 +329,17 @@
             updateWorkflow();
         }
 
-        // UPDATED: High-Contrast drawing with constant thickness
+        // --- DRAWING: SCALING PRECISION ---
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const w = canvas.width; const h = canvas.height;
             const invZoom = 1.0 / zoomLevel;
 
-            ctx.strokeStyle = '#ffff00'; // Neon Yellow
-            ctx.lineWidth = 2.5;         // FIXED SCREEN WIDTH
+            // DYNAMIC LINE WIDTH: Gets thinner relative to screen as you zoom in
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 2.5 * invZoom; 
             ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.shadowColor = 'black'; ctx.shadowBlur = 2;
+            ctx.shadowColor = 'black'; ctx.shadowBlur = 1;
 
             ctx.fillStyle = '#007aff';
             scaleDots.forEach(pt => {
@@ -404,22 +367,16 @@
 
         function updateWorkflow() {
             if (!isVideoLoaded) return;
-            const btn = document.getElementById('btn-workflow');
-            const traceControls = document.getElementById('trace-controls');
-            const playControls = document.getElementById('playback-controls');
+            const btn = document.getElementById('btn-workflow'); const trc = document.getElementById('trace-controls'); const pb = document.getElementById('playback-controls');
             document.getElementById('cam-depth').disabled = (startPt !== null);
-
             if (isAdjustingSize) {
-                traceControls.style.display = 'flex'; playControls.style.display = 'none'; btn.style.display = 'none';
-                const confirmBtn = document.getElementById('btn-confirm-trace');
-                confirmBtn.disabled = activeTrace.length === 0;
-                if (startPt === null) { confirmBtn.innerText = "CONFIRM TRACE"; confirmBtn.onclick = confirmStartTrace; confirmBtn.style.background = '#34c759'; } 
-                else { confirmBtn.innerText = "CONFIRM & ANALYZE"; confirmBtn.onclick = confirmEndTrace; confirmBtn.style.background = '#ff3b30'; }
+                trc.style.display = 'flex'; pb.style.display = 'none'; btn.style.display = 'none';
+                const cBtn = document.getElementById('btn-confirm-trace'); cBtn.disabled = activeTrace.length === 0;
+                if (startPt === null) { cBtn.innerText = "CONFIRM TRACE"; cBtn.onclick = confirmStartTrace; cBtn.style.background = '#34c759'; } 
+                else { cBtn.innerText = "CONFIRM & ANALYZE"; cBtn.onclick = confirmEndTrace; cBtn.style.background = '#ff3b30'; }
                 return;
             } 
-            traceControls.style.display = 'none'; playControls.style.display = 'block'; btn.style.display = 'block';
-            btn.disabled = false;
-            
+            trc.style.display = 'none'; pb.style.display = 'block'; btn.style.display = 'block'; btn.disabled = false;
             if (scaleDots.length === 0) {
                 btn.innerText = "SET 1ST SCALE DOT"; btn.style.background = '#007aff'; btn.disabled = (activeTap === null);
                 btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; document.getElementById('results-text').innerText = "Tap 2nd scale dot."; updateWorkflow(); draw(); };
@@ -441,9 +398,7 @@
             } else if (endPt === null) {
                 btn.innerText = "LOCK LANDING"; btn.style.background = '#ff3b30'; btn.disabled = (activeTap === null);
                 btn.onclick = () => { isAdjustingSize = true; document.getElementById('results-text').innerText = "Trace landing outline."; updateWorkflow(); };
-            } else {
-                btn.innerText = "VIEW REPORT"; btn.style.background = '#007aff'; btn.onclick = showReportModal;
-            }
+            } else { btn.innerText = "VIEW REPORT"; btn.style.background = '#007aff'; btn.onclick = showReportModal; }
         }
 
         function calculateTraceSize() {
@@ -479,6 +434,15 @@
             if (!startPt || !peakPt || !endPt) return;
             const totalTime = Math.abs(endPt.time - startPt.time); const timeToPeak = Math.abs(peakPt.time - startPt.time);
             const v_y0_ft = gravity * timeToPeak; const peakH_ft = 0.5 * gravity * (timeToPeak * timeToPeak);
+
+            // SQUIB SAFETY: Peak Height must clear 10ft bar
+            if (peakH_ft < 10.0) {
+                activeReport = {
+                    date: new Date().toISOString(), totalTime, peakHeightFeet: peakH_ft, maxGoodDistance: 0, missType: "Under Crossbar",
+                    launchAngle: Math.atan2(v_y0_ft, 1.0) * (180/Math.PI), distanceYards: 0, angleWarning: "⚠️ Kick too low to score"
+                };
+                showReportModal(); return;
+            }
 
             const rawRatio = ballSizeStart / ballSizeEnd;
             let dynamicExponent;
