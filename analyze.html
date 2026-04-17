@@ -128,23 +128,10 @@
         let scaleDots = []; let activeTap = null; let activeTrace = []; let isDrawingTrace = false;
         let startPt = null; let ascentPt = null; let peakPt = null; let descentPt = null; let endPt = null;
 
-        // FIXED: Listener assigned BEFORE source
         document.getElementById('file-upload').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            // Maintenance: Clear IndexedDB latest_kick to save space
-            const req = indexedDB.open('KickTrackerDB', 1);
-            req.onsuccess = (ev) => {
-                const db = ev.target.result;
-                if (db.objectStoreNames.contains('videos')) {
-                    db.transaction('videos', 'readwrite').objectStore('videos').delete('latest_kick');
-                }
-            };
-
+            const file = e.target.files[0]; if (!file) return;
             video.onloadedmetadata = () => { setupVideoUI(); };
-            video.src = URL.createObjectURL(file);
-            video.load();
+            video.src = URL.createObjectURL(file); video.load();
         });
 
         document.getElementById('cam-depth').addEventListener('input', (e) => {
@@ -195,7 +182,7 @@
             ctx.fillStyle = '#007aff';
             scaleDots.forEach(pt => { ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, 8 * invZoom, 0, Math.PI * 2); ctx.fill(); });
 
-            // Trace
+            // High Precision Needle Trace
             if (isAdjustingSize && activeTrace.length > 0) {
                 ctx.strokeStyle = 'black'; ctx.lineWidth = 4.0 * invZoom;
                 ctx.beginPath(); ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
@@ -204,7 +191,7 @@
                 ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1.5 * invZoom; ctx.stroke();
             }
 
-            // Crosshair
+            // High Precision Crosshair
             if (activeTap && !isAdjustingSize) {
                 const px = activeTap.x * w; const py = activeTap.y * h; const len = 12 * invZoom;
                 ctx.strokeStyle = 'black'; ctx.lineWidth = 4.0 * invZoom;
@@ -289,8 +276,24 @@
             const v_z0_yards = (zDistanceYards) / totalTime;
             const p1 = scaleDots[0], p2 = scaleDots[1];
             const yardsPerUnit = 10.0 / Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-            const drift = (peakPt.pos.x - startPt.pos.x) * yardsPerUnit;
-            const v_x_yards = drift / timeToPeak;
+            
+            // --- UPDATED WEIGHTED DRIFT LOGIC ---
+            const pts = [startPt, ascentPt, peakPt, descentPt].filter(p => p !== null);
+            const startX = pts[0].pos.x; 
+            let weightedDrift = 0.0;
+            let totalWeight = 0.0;
+
+            for (let i = 1; i < pts.length; i++) {
+                const pt = pts[i];
+                const dx = pt.pos.x - startX;
+                const tRelative = (pt.time - startPt.time) / totalTime;
+                const weight = Math.pow(tRelative, 2); // Weights later points more heavily (catches hooks)
+                weightedDrift += dx * weight;
+                totalWeight += weight;
+            }
+
+            const avgDriftYards = (weightedDrift / (totalWeight || 1)) * yardsPerUnit;
+            const v_x_yards = avgDriftYards / totalTime;
 
             const crossTime = (-(-v_y0_ft) + Math.sqrt(Math.pow(-v_y0_ft, 2) - 4 * (0.5 * gravity) * 10)) / (2 * (0.5 * gravity));
             const hLimit = v_z0_yards * crossTime;
