@@ -517,53 +517,113 @@
             calculateOpticsPhysics(); updateWorkflow(); draw();
         }
 
-        function calculateOpticsPhysics() {
-            if (!startPt || !peakPt || !endPt) return;
-            const totalTime = Math.abs(endPt.time - startPt.time); const timeToPeak = Math.abs(peakPt.time - startPt.time);
-            const v_y0_ft = gravity * timeToPeak; const peakH_ft = 0.5 * gravity * (timeToPeak * timeToPeak);
+function calculateOpticsPhysics() {
+    if (!startPt || !peakPt || !endPt) return;
 
-            const rawRatio = ballSizeStart / ballSizeEnd;
-            let dynamicExponent;
-            if (endAspectRatio <= 1.7) { dynamicExponent = 1.18; } 
-            else { dynamicExponent = Math.min(1.20 + (endAspectRatio - 1.7) * 0.10, 1.35); }
+    // -----------------------------
+    // TIME-OF-FLIGHT PHYSICS (#2)
+    // -----------------------------
+    const t_peak = peakPt.time - startPt.time;
+    const t_total = endPt.time - startPt.time;
 
-            const blurCompensatedRatio = Math.pow(rawRatio, dynamicExponent);
-            let zDistanceYards = cameraDistance * (blurCompensatedRatio - 1.0);
-            const minAngleRad = 20.0 * Math.PI / 180.0;
-            const max_Vz_ft = v_y0_ft / Math.tan(minAngleRad);
-            const max_Z_yards = (max_Vz_ft * totalTime) / 3.0;
-            if (zDistanceYards > max_Z_yards) zDistanceYards = max_Z_yards;
+    if (t_total <= 0) return;
 
-            const v_z0_ft = (zDistanceYards * 3.0) / (totalTime > 0 ? totalTime : 1.0);
-            const v_z0_yards = v_z0_ft / 3.0;
+    // vertical launch velocity (ft/s)
+    const v_up = gravity * t_peak;
 
-            const p1 = scaleDots[0], p2 = scaleDots[1];
-            const scalePixelDist = Math.sqrt(Math.pow((p2.x - p1.x), 2) + Math.pow((p2.y - p1.y), 2));
-            const yardsPerNormalizedUnit = 10.0 / (scalePixelDist > 0 ? scalePixelDist : 0.1);
-            const pts = [startPt, ascentPt, peakPt, descentPt].filter(p => p !== null);
-            const startX = pts[0].pos.x; let weightedDrift = 0.0, totalWeight = 0.0;
-            for (let i = 1; i < pts.length; i++) {
-                const dx = pts[i].pos.x - startX; const tNorm = (pts[i].time - startPt.time) / totalTime;
-                const weight = Math.max(0.2, tNorm); weightedDrift += dx * weight; totalWeight += weight;
-            }
-            const v_x_yards = (weightedDrift / totalWeight) * yardsPerNormalizedUnit / totalTime;
+    // peak height (ft)
+    const peakH_ft = 0.5 * gravity * t_peak * t_peak;
 
-            const a = 0.5 * gravity, b = -v_y0_ft, c = 10.0;
-            const disc = (b * b) - (4 * a * c);
-            const crossbarTime = disc > 0 ? (-b + Math.sqrt(disc)) / (2 * a) : totalTime;
-            const heightLimit = v_z0_yards * crossbarTime;
-            const timeWide = Math.abs(v_x_yards) > 0.01 ? 3.11 / Math.abs(v_x_yards) : Infinity;
-            const maxGoodDistance = Math.min(heightLimit, v_z0_yards * timeWide);
+    // total hang time
+    const totalTime = t_total;
 
-            const launchAngleDeg = Math.atan2(v_y0_ft, (v_z0_ft > 0 ? v_z0_ft : 0.001)) * (180.0 / Math.PI);
-            activeReport = {
-                date: new Date().toISOString(), totalTime, timeToPeak, distanceYards: zDistanceYards, peakHeightFeet: peakH_ft,
-                launchAngle: launchAngleDeg, horizontalVelocity: v_z0_ft, maxGoodDistance, missType: (v_z0_yards * timeWide < heightLimit) ? (v_x_yards > 0 ? "Misses Right" : "Misses Left") : "Falls Short",
-                angleWarning: (launchAngleDeg < 15) ? `⚠️ Flat Ang: ${launchAngleDeg.toFixed(1)}°` : (launchAngleDeg > 65 ? `⚠️ Steep Ang: ${launchAngleDeg.toFixed(1)}°` : null)
-            };
-            let history = JSON.parse(localStorage.getItem('kickHistory')) || []; history.unshift(activeReport); localStorage.setItem('kickHistory', JSON.stringify(history));
-            showReportModal();
-        }
+    // -----------------------------
+    // DEPTH CALIBRATION (#3)
+    // -----------------------------
+    // Use ONLY start frame size as calibration anchor
+
+    const rawRatio = ballSizeStart / (ballSizeEnd || ballSizeStart);
+
+    // damped scaling (no continuous drift)
+    const depthScale = Math.max(0.5, Math.min(2.5, rawRatio));
+
+    // camera baseline depth (your existing slider)
+    const baseDepthYards = cameraDistance;
+
+    // estimated initial depth at kick moment
+    const initialDepthYards = baseDepthYards * (depthScale - 0.5);
+
+    // forward velocity (yards/sec)
+    const v_forward_yps = initialDepthYards / totalTime;
+
+    // total distance traveled downfield
+    const distanceYards = v_forward_yps * totalTime;
+
+    // -----------------------------
+    // LATERAL MOTION (your existing drift logic, simplified)
+    // -----------------------------
+    const pts = [startPt, ascentPt, peakPt, descentPt, endPt].filter(p => p);
+
+    const startX = pts[0].pos.x;
+
+    let driftSum = 0;
+    let weightSum = 0;
+
+    for (let i = 1; i < pts.length; i++) {
+        const dx = pts[i].pos.x - startX;
+        const tNorm = (pts[i].time - startPt.time) / totalTime;
+
+        const w = Math.max(0.2, tNorm);
+        driftSum += dx * w;
+        weightSum += w;
+    }
+
+    const lateralDrift = (weightSum > 0 ? driftSum / weightSum : 0);
+
+    // -----------------------------
+    // LAUNCH ANGLE
+    // -----------------------------
+    const launchAngleDeg =
+        Math.atan2(v_up, Math.max(v_forward_yps, 0.001)) * (180 / Math.PI);
+
+    // -----------------------------
+    // REPORT OUTPUT
+    // -----------------------------
+    activeReport = {
+        date: new Date().toISOString(),
+
+        totalTime: totalTime,
+        timeToPeak: t_peak,
+
+        peakHeightFeet: peakH_ft,
+        distanceYards: distanceYards,
+
+        launchAngle: launchAngleDeg,
+
+        lateralCurve: lateralDrift,
+
+        missType:
+            Math.abs(lateralDrift) > 0.1
+                ? (lateralDrift > 0 ? "Curves Right" : "Curves Left")
+                : "Straight",
+
+        maxGoodDistance: distanceYards,
+
+        angleWarning:
+            launchAngleDeg < 15
+                ? `⚠️ Flat Ang: ${launchAngleDeg.toFixed(1)}°`
+                : launchAngleDeg > 65
+                ? `⚠️ Steep Ang: ${launchAngleDeg.toFixed(1)}°`
+                : null
+    };
+
+    // save history
+    let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
+    history.unshift(activeReport);
+    localStorage.setItem('kickHistory', JSON.stringify(history));
+
+    showReportModal();
+}
 
         function showReportModal() {
             if (!activeReport) return;
