@@ -1,696 +1,304 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="KickTracker">
-    <title>Analyze Video</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            background-color: #000;
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            height: 100dvh;
-            padding-top: env(safe-area-inset-top);
-            padding-bottom: env(safe-area-inset-bottom);
-            overflow: hidden;
-            box-sizing: border-box;
-        }
-        
-        .sys-buttons {
-            display: flex;
-            justify-content: flex-end;
-            gap: 8px;
-            padding: 8px 16px;
-            background-color: #1c1c1e;
-        }
-        
-        .sys-buttons button {
-            padding: 6px 12px;
-            border-radius: 6px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        
-        #btn-home { background: #007aff; color: white; margin-right: auto; }
-        #btn-reset { background: #3a3a3c; color: white; display: none; }
-        #btn-new { background: #ff3b30; color: white; display: none; }
-        #file-upload { display: none; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>KickTracker</title>
 
-        .dashboard {
-            background-color: #1c1c1e;
-            padding: 10px 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .row { display: flex; align-items: center; gap: 10px; justify-content: center; }
-        
-        select, input[type="range"] {
-            padding: 4px;
-            border-radius: 4px;
-            background: #2c2c2e;
-            color: white;
-            border: 1px solid #3a3a3c;
-        }
+<style>
+body {
+    margin: 0;
+    background: black;
+    color: white;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
 
-        .results-box {
-            background-color: #2c2c2e;
-            padding: 8px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 14px;
-            min-height: 20px;
-            text-align: center;
-        }
+/* top bar */
+.sys-buttons {
+    display:flex;
+    padding:10px;
+    gap:8px;
+    background:#1c1c1e;
+}
+button {
+    border: none;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-weight: bold;
+    cursor: pointer;
+}
+#btn-home { background:#007aff; color:white; margin-right:auto; }
+#btn-reset { background:#3a3a3c; color:white; }
 
-        .viewport-container {
-            flex-grow: 1;
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #000;
-        }
+/* dashboard */
+.dashboard {
+    background:#1c1c1e;
+    padding:10px;
+}
 
-        .zoom-wrapper {
-            position: relative;
-            display: inline-flex; 
-            max-width: 100%;
-            max-height: 100%;
-            transition: transform 0.1s ease-out; 
-            transform-origin: center center;
-        }
+/* viewport */
+.viewport-container {
+    flex:1;
+    position:relative;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    overflow:hidden;
+    background:black;
+}
 
-        video {
-            display: block;
-            max-width: 100%;
-            max-height: 100%;
-            width: auto;
-            height: auto;
-        }
+.video-wrap {
+    position:relative;
+    display:inline-block;
+}
 
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            touch-action: none; 
-        }
+video {
+    display:block;
+    max-width:100%;
+    max-height:100%;
+}
 
-        .upload-placeholder {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: #8e8e93;
-            cursor: pointer;
-        }
+canvas {
+    position:absolute;
+    top:0;
+    left:0;
+    pointer-events:none;
+}
 
-        .controls {
-            background-color: #1c1c1e;
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+.results-box {
+    font-size:12px;
+    text-align:center;
+    padding:6px;
+    background:#2c2c2e;
+    border-radius:8px;
+}
 
-        .playback-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 20px;
-        }
+/* controls */
+.controls {
+    background:#1c1c1e;
+    padding:10px;
+}
 
-        .playback-row button {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 16px;
-            cursor: pointer;
-        }
+.row {
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:10px;
+}
 
-        .workflow-bar {
-            background-color: #1c1c1e;
-            padding: 15px;
-            display: flex;
-            justify-content: center;
-        }
-
-        .workflow-btn {
-            width: 100%;
-            padding: 16px;
-            font-size: 18px;
-            font-weight: bold;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            color: white;
-            background: #3a3a3c;
-        }
-
-        /* Modal Styles */
-        #report-modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
-            z-index: 100;
-            align-items: center;
-            justify-content: center;
-        }
-        .report-content {
-            background: #1c1c1e;
-            width: 90%;
-            max-width: 400px;
-            border-radius: 16px;
-            padding: 20px;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .report-section {
-            background: #2c2c2e;
-            border-radius: 10px;
-            padding: 10px 15px;
-            margin-bottom: 15px;
-        }
-        .report-header { font-weight: bold; margin-bottom: 10px; font-size: 14px; color: #8e8e93; }
-        .report-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 16px; border-bottom: 1px solid #3a3a3c; padding-bottom: 8px;}
-        .report-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-        .text-green { color: #34c759; font-weight: bold; }
-        .text-red { color: #ff3b30; font-weight: bold; }
-        .text-orange { color: #ff9500; font-weight: bold; }
-        .btn-close-modal { width: 100%; padding: 14px; background: #007aff; color: white; border: none; border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 10px; }
-    </style>
+/* upload */
+.upload-placeholder {
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    text-align:center;
+    color:#888;
+}
+</style>
 </head>
+
 <body>
 
-    <div class="sys-buttons" id="sys-buttons">
-        <button id="btn-home" onclick="window.location.href='index.html'">&#10094; Home</button>
-        <button id="btn-reset" onclick="resetAll()">Reset</button>
-        <button id="btn-new" onclick="document.getElementById('file-upload').click()">New Video</button>
-        <input type="file" id="file-upload" accept="video/*">
+<div class="sys-buttons">
+    <button id="btn-home">Home</button>
+    <button id="btn-reset" onclick="resetAll()">Reset</button>
+    <input type="file" id="file" hidden>
+</div>
+
+<div class="dashboard">
+    <div class="results-box" id="status">Upload video to begin</div>
+</div>
+
+<div class="viewport-container" id="viewport">
+    <div class="upload-placeholder" id="upload">
+        Click to upload
     </div>
 
-    <div class="dashboard">
-        <div class="row">
-            <select id="game-level">
-                <option value="NFL">NFL</option>
-                <option value="College" selected>College</option>
-            </select>
-            <select id="hash-pos">
-                <option value="Left">Left</option>
-                <option value="Middle" selected>Middle</option>
-                <option value="Right">Right</option>
-            </select>
-        </div>
-        <div class="row" style="font-size: 12px; font-weight: bold;">
-            Cam Depth (Yds): <span id="depth-val">15</span>
-            <input type="range" id="cam-depth" min="5" max="50" step="1" value="15" style="flex-grow:1;">
-        </div>
-        <div class="results-box" id="results-text">Set Camera Distance. Tap to place 1st scale dot.</div>
+    <div class="video-wrap" id="wrap" style="display:none;">
+        <video id="video" playsinline></video>
+        <canvas id="canvas"></canvas>
     </div>
+</div>
 
-    <div class="viewport-container" id="viewport-container">
-        <div class="upload-placeholder" id="upload-placeholder" onclick="document.getElementById('file-upload').click()">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:10px;"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-            Upload Video
-        </div>
-        
-        <div class="zoom-wrapper" id="zoom-wrapper" style="display: none;">
-            <video id="video-player" playsinline></video>
-            <canvas id="overlay"></canvas>
-        </div>
+<div class="controls">
+    <div class="row">
+        <span>Cam Depth</span>
+        <input type="range" id="depth" min="5" max="50" value="15">
     </div>
+</div>
 
-    <div class="controls" id="persistent-controls" style="display: none;">
-        <div class="row" style="padding: 0 10px;">
-            <span style="font-size: 12px; font-weight: bold; width: 45px;">Zoom:</span>
-            <input type="range" id="zoom-slider" min="1" max="20" step="0.1" value="1" style="flex-grow:1;">
-            <span id="zoom-val" style="font-size: 12px; width: 35px; text-align: right;">1x</span>
-        </div>
+<script>
 
-        <div id="trace-controls" style="display: none; justify-content: center; gap: 10px;">
-            <button onclick="activeTrace = []; draw()" style="background:#ff3b30; color:white; border:none; padding:10px; border-radius:8px; font-weight:bold;">CLEAR TRACE</button>
-            <button id="btn-confirm-trace" style="background:#34c759; color:white; border:none; padding:10px; border-radius:8px; font-weight:bold;">CONFIRM TRACE</button>
-        </div>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const wrap = document.getElementById("wrap");
+const viewport = document.getElementById("viewport");
 
-        <div id="playback-controls">
-            <input type="range" id="scrubber" min="0" max="1" step="0.01" value="0" style="width: 100%; margin-bottom: 10px;">
-            <div class="playback-row">
-                <button onclick="stepFrame(-1)">-1 Fr</button>
-                <button id="btn-playpause" onclick="togglePlay()" style="font-size: 24px;">⏸</button>
-                <button onclick="stepFrame(1)">+1 Fr</button>
-            </div>
-        </div>
-    </div>
+let scaleDots = [];
+let activeTap = null;
 
-    <div class="workflow-bar">
-        <button id="btn-workflow" class="workflow-btn" disabled>Awaiting Video...</button>
-    </div>
+let startPt=null, peakPt=null, endPt=null;
+let cameraDepth = 15;
 
-    <div id="report-modal">
-        <div class="report-content">
-            <h2 style="text-align:center; margin-top:0;">Actuarial Report</h2>
-            <div class="report-section">
-                <div class="report-header">Scoring Projection</div>
-                <div class="report-row"><span>Max Good Distance</span> <span class="text-green" id="rep-max">-- yds</span></div>
-                <div class="report-row"><span id="rep-past-label">Past -- yds</span> <span class="text-red" id="rep-miss">--</span></div>
-            </div>
-            <div class="report-section">
-                <div class="report-header">Flight Physics</div>
-                <div class="report-row"><span>Total Hang Time</span> <span id="rep-time" style="font-weight:bold;">--s</span></div>
-                <div class="report-row"><span>Peak Height</span> <span id="rep-height" style="font-weight:bold;">-- ft</span></div>
-                <div class="report-row"><span>Launch Angle</span> <span id="rep-angle" class="text-orange">--°</span></div>
-                <div id="rep-warning" style="color:#ff9500; font-size:12px; margin-top:5px; display:none;"></div>
-            </div>
-            <div class="report-section">
-                <div class="report-header">Optics Engine Data</div>
-                <div class="report-row"><span>True Depth Travelled</span> <span id="rep-depth" style="color:#8e8e93;">-- yds</span></div>
-            </div>
-            <button class="btn-close-modal" onclick="document.getElementById('report-modal').style.display='none'">Close Report</button>
-        </div>
-    </div>
+const status = document.getElementById("status");
 
-    <script>
-        const gravity = 32.17;
-        const video = document.getElementById('video-player');
-        const canvas = document.getElementById('overlay');
-        const ctx = canvas.getContext('2d');
-        const zoomWrapper = document.getElementById('zoom-wrapper');
-        const scrubber = document.getElementById('scrubber');
-        
-        let isVideoLoaded = false;
-        let isScrubbing = false;
-        let activeReport = null;
+/* -----------------------------
+   FIXED: correct canvas sizing
+----------------------------- */
+function resizeCanvas() {
+    const rect = video.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
 
-        let cameraDistance = 15.0;
-        let ballSizeStart = 10.0;
-        let ballSizeEnd = 10.0;
-        let startAspectRatio = 1.0; 
-        let endAspectRatio = 1.0;   
-        let isAdjustingSize = false;
-        let zoomLevel = 1.0;
-        
-        let scaleDots = []; 
-        let activeTap = null;
-        let activeTrace = []; 
-        let isDrawingTrace = false;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
 
-        let startPt = null; let ascentPt = null; let peakPt = null; let descentPt = null; let endPt = null;
+    canvas.style.width = rect.width + "px";
+    canvas.style.height = rect.height + "px";
 
-        // NEW FUNCTION: Dynamically calculate internal canvas pixels
-        function updateCanvasResolution() {
-            const dpr = window.devicePixelRatio || 1;
-            const rect = video.getBoundingClientRect();
-            const baseWidth = rect.width / zoomLevel;
-            const baseHeight = rect.height / zoomLevel;
-
-            canvas.width = baseWidth * zoomLevel * dpr;
-            canvas.height = baseHeight * zoomLevel * dpr;
-        }
-
-        document.getElementById('file-upload').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            video.src = URL.createObjectURL(file);
-            video.load();
-            video.onloadeddata = () => { setupVideoUI(); };
-        });
-
-        document.getElementById('cam-depth').addEventListener('input', (e) => {
-            cameraDistance = parseFloat(e.target.value);
-            document.getElementById('depth-val').innerText = cameraDistance;
-        });
-
-        document.getElementById('zoom-slider').addEventListener('input', (e) => {
-            zoomLevel = parseFloat(e.target.value);
-            document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
-            zoomWrapper.style.transform = `scale(${zoomLevel})`;
-            
-            if (activeTap) {
-                zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
-            } else {
-                zoomWrapper.style.transformOrigin = 'center center';
-            }
-            
-            updateCanvasResolution(); // Scale resolution
-            draw(); // Redraw crisp lines
-        });
-
-        video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
-        scrubber.addEventListener('input', (e) => { isScrubbing = true; video.currentTime = e.target.value; });
-        scrubber.addEventListener('change', () => { isScrubbing = false; });
-
-        canvas.addEventListener('pointerdown', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = ((e.clientX - rect.left) / rect.width);
-            const y = ((e.clientY - rect.top) / rect.height);
-            if (isAdjustingSize) { isDrawingTrace = true; activeTrace.push({x, y}); } 
-            else { handleTap({x, y}); }
-            draw();
-        });
-
-        canvas.addEventListener('pointermove', (e) => {
-            if (!isDrawingTrace) return;
-            const rect = canvas.getBoundingClientRect();
-            const x = ((e.clientX - rect.left) / rect.width);
-            const y = ((e.clientY - rect.top) / rect.height);
-            activeTrace.push({x, y});
-            draw();
-        });
-
-        canvas.addEventListener('pointerup', () => { isDrawingTrace = false; updateWorkflow(); });
-
-        function handleTap(pt) {
-            activeTap = pt;
-            if(zoomLevel > 1) zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
-            updateWorkflow();
-        }
-
-        // UPDATED: High-DPI draw function without manual invZoom calculations
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const w = canvas.width; 
-            const h = canvas.height;
-            const dpr = window.devicePixelRatio || 1;
-
-            ctx.strokeStyle = '#ffff00';
-            ctx.lineWidth = 2.5 * dpr;          
-            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.shadowColor = 'black'; ctx.shadowBlur = 2 * dpr;
-
-            ctx.fillStyle = '#007aff';
-            scaleDots.forEach(pt => {
-                ctx.beginPath(); 
-                ctx.arc(pt.x * w, pt.y * h, 6 * dpr, 0, Math.PI * 2); 
-                ctx.fill();
-            });
-
-            if (isAdjustingSize && activeTrace.length > 0) {
-                ctx.beginPath(); ctx.moveTo(activeTrace[0].x * w, activeTrace[0].y * h);
-                for (let i = 1; i < activeTrace.length; i++) ctx.lineTo(activeTrace[i].x * w, activeTrace[i].y * h);
-                ctx.stroke();
-            }
-
-            if (activeTap && !isAdjustingSize) {
-                const px = activeTap.x * w; 
-                const py = activeTap.y * h; 
-                const len = 12 * dpr;
-                ctx.beginPath(); 
-                ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); 
-                ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); 
-                ctx.stroke();
-            }
-
-            ctx.shadowBlur = 0;
-            const dotRad = 6 * dpr;
-            const drawMarker = (pt, color) => {
-                if (!pt) return; 
-                ctx.fillStyle = color; 
-                ctx.beginPath(); 
-                ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2); 
-                ctx.fill();
-            };
-            
-            drawMarker(startPt, '#34c759'); drawMarker(ascentPt, '#ffcc00'); 
-            drawMarker(peakPt, '#ff9500'); drawMarker(descentPt, '#ffcc00'); 
-            drawMarker(endPt, '#ff3b30'); 
-        }
-
-        function updateWorkflow() {
-            if (!isVideoLoaded) return;
-            const btn = document.getElementById('btn-workflow');
-            const traceControls = document.getElementById('trace-controls');
-            const playControls = document.getElementById('playback-controls');
-            document.getElementById('cam-depth').disabled = (startPt !== null);
-
-            if (isAdjustingSize) {
-                traceControls.style.display = 'flex'; playControls.style.display = 'none'; btn.style.display = 'none';
-                const confirmBtn = document.getElementById('btn-confirm-trace');
-                confirmBtn.disabled = activeTrace.length === 0;
-                if (startPt === null) { confirmBtn.innerText = "CONFIRM TRACE"; confirmBtn.onclick = confirmStartTrace; confirmBtn.style.background = '#34c759'; } 
-                else { confirmBtn.innerText = "CONFIRM & ANALYZE"; confirmBtn.onclick = confirmEndTrace; confirmBtn.style.background = '#ff3b30'; }
-                return;
-            } 
-            traceControls.style.display = 'none'; playControls.style.display = 'block'; btn.style.display = 'block';
-            btn.disabled = false;
-            
-            if (scaleDots.length === 0) {
-                btn.innerText = "SET 1ST SCALE DOT"; btn.style.background = '#007aff'; btn.disabled = (activeTap === null);
-                btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; document.getElementById('results-text').innerText = "Tap 2nd scale dot."; updateWorkflow(); draw(); };
-            } else if (scaleDots.length === 1) {
-                btn.innerText = "SET 2ND SCALE DOT"; btn.style.background = '#007aff'; btn.disabled = (activeTap === null);
-                btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; document.getElementById('results-text').innerText = "1. Scrub to Impact. Tap ball."; updateWorkflow(); draw(); };
-            } else if (startPt === null) {
-                btn.innerText = "LOCK IMPACT"; btn.style.background = '#34c759'; btn.disabled = (activeTap === null);
-                btn.onclick = () => { isAdjustingSize = true; document.getElementById('results-text').innerText = "Trace ball outline."; updateWorkflow(); };
-            } else if (ascentPt === null) {
-                btn.innerText = "MARK ASCENT"; btn.style.background = '#ffcc00'; btn.style.color = 'black'; btn.disabled = (activeTap === null);
-                btn.onclick = () => { ascentPt = {time: video.currentTime, pos: activeTap}; activeTap = null; document.getElementById('results-text').innerText = "3. Scrub to APEX. Tap ball."; updateWorkflow(); draw(); };
-            } else if (peakPt === null) {
-                btn.innerText = "MARK APEX"; btn.style.background = '#ff9500'; btn.style.color = 'white'; btn.disabled = (activeTap === null);
-                btn.onclick = () => { peakPt = {time: video.currentTime, pos: activeTap}; activeTap = null; document.getElementById('results-text').innerText = "4. Scrub to half DOWN. Tap ball."; updateWorkflow(); draw(); };
-            } else if (descentPt === null) {
-                btn.innerText = "MARK DESCENT"; btn.style.background = '#ffcc00'; btn.style.color = 'black'; btn.disabled = (activeTap === null);
-                btn.onclick = () => { descentPt = {time: video.currentTime, pos: activeTap}; activeTap = null; document.getElementById('results-text').innerText = "5. Scrub to LANDING. Tap ball."; updateWorkflow(); draw(); };
-            } else if (endPt === null) {
-                btn.innerText = "LOCK LANDING"; btn.style.background = '#ff3b30'; btn.disabled = (activeTap === null);
-                btn.onclick = () => { isAdjustingSize = true; document.getElementById('results-text').innerText = "Trace landing outline."; updateWorkflow(); };
-            } else {
-                btn.innerText = "VIEW REPORT"; btn.style.background = '#007aff'; btn.onclick = showReportModal;
-            }
-        }
-
-        function calculateTraceSize() {
-            if (activeTrace.length === 0) return 10.0;
-            // Adjusted to normalize out the dynamic zoom/dpr so physics stay perfectly consistent
-            const dpr = window.devicePixelRatio || 1;
-            const baseW = canvas.width / (zoomLevel * dpr);
-            const baseH = canvas.height / (zoomLevel * dpr);
-            
-            const xs = activeTrace.map(pt => pt.x * baseW); 
-            const ys = activeTrace.map(pt => pt.y * baseH);
-            return Math.sqrt(Math.max((Math.max(...xs) - Math.min(...xs)), 2.0) * Math.max((Math.max(...ys) - Math.min(...ys)), 2.0));
-        }
-
-        function calculateAspectRatio() {
-            if (activeTrace.length === 0) return 1.0;
-            const dpr = window.devicePixelRatio || 1;
-            const baseW = canvas.width / (zoomLevel * dpr);
-            const baseH = canvas.height / (zoomLevel * dpr);
-
-            const xs = activeTrace.map(pt => pt.x * baseW); 
-            const ys = activeTrace.map(pt => pt.y * baseH);
-            const w = Math.max((Math.max(...xs) - Math.min(...xs)), 1.0); const h = Math.max((Math.max(...ys) - Math.min(...ys)), 1.0);
-            return Math.max(w, h) / Math.min(w, h);
-        }
-
-        function confirmStartTrace() {
-            ballSizeStart = calculateTraceSize(); startAspectRatio = calculateAspectRatio();
-            startPt = {time: video.currentTime, pos: activeTap}; activeTap = null; activeTrace = []; isAdjustingSize = false; 
-            zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`; 
-            document.getElementById('zoom-slider').value = 1; document.getElementById('zoom-val').innerText = '1x';
-            document.getElementById('results-text').innerText = "2. Scrub to half UP. Tap ball."; 
-            updateCanvasResolution(); // Reset resolution on zoom out
-            updateWorkflow(); draw();
-        }
-
-        function confirmEndTrace() {
-            ballSizeEnd = calculateTraceSize(); endAspectRatio = calculateAspectRatio();
-            endPt = {time: video.currentTime, pos: activeTap}; activeTap = null; activeTrace = []; isAdjustingSize = false;
-            zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`; 
-            document.getElementById('zoom-slider').value = 1; document.getElementById('zoom-val').innerText = '1x';
-            updateCanvasResolution(); // Reset resolution on zoom out
-            calculateOpticsPhysics(); updateWorkflow(); draw();
-        }
-
-function calculateOpticsPhysics() {
-    if (!startPt || !peakPt || !endPt) return;
-
-    // -----------------------------
-    // TIME-OF-FLIGHT PHYSICS (#2)
-    // -----------------------------
-    const t_peak = peakPt.time - startPt.time;
-    const t_total = endPt.time - startPt.time;
-
-    if (t_total <= 0) return;
-
-    // vertical launch velocity (ft/s)
-    const v_up = gravity * t_peak;
-
-    // peak height (ft)
-    const peakH_ft = 0.5 * gravity * t_peak * t_peak;
-
-    // total hang time
-    const totalTime = t_total;
-
-    // -----------------------------
-    // DEPTH CALIBRATION (#3)
-    // -----------------------------
-    // Use ONLY start frame size as calibration anchor
-
-    const rawRatio = ballSizeStart / (ballSizeEnd || ballSizeStart);
-
-    // damped scaling (no continuous drift)
-    const depthScale = Math.max(0.5, Math.min(2.5, rawRatio));
-
-    // camera baseline depth (your existing slider)
-    const baseDepthYards = cameraDistance;
-
-    // estimated initial depth at kick moment
-    const initialDepthYards = baseDepthYards * (depthScale - 0.5);
-
-    // forward velocity (yards/sec)
-    const v_forward_yps = initialDepthYards / totalTime;
-
-    // total distance traveled downfield
-    const distanceYards = v_forward_yps * totalTime;
-
-    // -----------------------------
-    // LATERAL MOTION (your existing drift logic, simplified)
-    // -----------------------------
-const pts = [startPt, ascentPt, peakPt, descentPt, endPt].filter(p => p);
-
-// normalize time + stabilize weighting
-const t0 = startPt.time;
-
-let weightedCurve = 0;
-let weightSum = 0;
-
-for (let i = 1; i < pts.length; i++) {
-    const p = pts[i];
-
-    const tNorm = (p.time - t0) / totalTime;
-
-    // screen-space drift
-    const dx = p.pos.x - startPt.pos.x;
-
-    // key fix: early motion is visually exaggerated → compress it
-    const timeWeight = Math.sqrt(tNorm);  
-
-    // key fix: reduce late-frame distortion
-    const depthWeight = 1 / (1 + tNorm * 2);
-
-    const w = timeWeight * depthWeight;
-
-    weightedCurve += dx * w;
-    weightSum += w;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
 }
 
-let lateralDrift = weightSum > 0 ? weightedCurve / weightSum : 0;
+/* -----------------------------
+   VIDEO LOAD
+----------------------------- */
+document.getElementById("upload").onclick = () => {
+    document.getElementById("file").click();
+};
 
-// final stabilization: prevent tiny noise looking like "curve"
-if (Math.abs(lateralDrift) < 0.02) lateralDrift = 0;
+document.getElementById("file").onchange = (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
 
-    // -----------------------------
-    // LAUNCH ANGLE
-    // -----------------------------
-    const launchAngleDeg =
-        Math.atan2(v_up, Math.max(v_forward_yps, 0.001)) * (180 / Math.PI);
+    video.src = URL.createObjectURL(file);
+    video.load();
 
-    // -----------------------------
-    // REPORT OUTPUT
-    // -----------------------------
-    activeReport = {
-        date: new Date().toISOString(),
+    video.onloadeddata = () => {
+        document.getElementById("upload").style.display="none";
+        wrap.style.display="block";
+        resizeCanvas();
+        status.innerText = "Tap 2 scale points";
+    };
+};
 
-        totalTime: totalTime,
-        timeToPeak: t_peak,
+/* -----------------------------
+   MOUSE -> VIDEO SPACE FIX
+----------------------------- */
+function getXY(e) {
+    const rect = video.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    return {x,y};
+}
 
-        peakHeightFeet: peakH_ft,
-        distanceYards: distanceYards,
+/* -----------------------------
+   CLICK HANDLING
+----------------------------- */
+canvas.addEventListener("pointerdown",(e)=>{
+    const pt = getXY(e);
 
-        launchAngle: launchAngleDeg,
+    if(scaleDots.length < 2){
+        scaleDots.push(pt);
+        status.innerText = scaleDots.length===1
+            ? "Tap second scale point"
+            : "Scrub to impact";
+        draw();
+        return;
+    }
 
-        lateralCurve: lateralDrift,
+    if(!startPt){
+        startPt = {time:video.currentTime,pos:pt};
+        status.innerText = "Mark peak";
+        return;
+    }
 
-        missType:
-            Math.abs(lateralDrift) > 0.1
-                ? (lateralDrift > 0 ? "Curves Right" : "Curves Left")
-                : "Straight",
+    if(!peakPt){
+        peakPt = {time:video.currentTime,pos:pt};
+        status.innerText = "Mark landing";
+        return;
+    }
 
-        maxGoodDistance: distanceYards,
+    if(!endPt){
+        endPt = {time:video.currentTime,pos:pt};
+        analyze();
+    }
+});
 
-        angleWarning:
-            launchAngleDeg < 15
-                ? `⚠️ Flat Ang: ${launchAngleDeg.toFixed(1)}°`
-                : launchAngleDeg > 65
-                ? `⚠️ Steep Ang: ${launchAngleDeg.toFixed(1)}°`
-                : null
+/* -----------------------------
+   DRAW (stable overlay system)
+----------------------------- */
+function draw(){
+    resizeCanvas();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+
+    ctx.fillStyle="cyan";
+    for(const p of scaleDots){
+        ctx.beginPath();
+        ctx.arc(p.x*w,p.y*h,5,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    const drawPt=(p,color)=>{
+        if(!p) return;
+        ctx.fillStyle=color;
+        ctx.beginPath();
+        ctx.arc(p.pos.x*w,p.pos.y*h,6,0,Math.PI*2);
+        ctx.fill();
     };
 
-    // save history
-    let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
-    history.unshift(activeReport);
-    localStorage.setItem('kickHistory', JSON.stringify(history));
-
-    showReportModal();
+    drawPt(startPt,"green");
+    drawPt(peakPt,"orange");
+    drawPt(endPt,"red");
 }
 
-        function showReportModal() {
-            if (!activeReport) return;
-            const mg = Math.max(0, activeReport.maxGoodDistance);
-            document.getElementById('rep-max').innerText = `≤ ${Math.floor(mg)} yds`;
-            document.getElementById('rep-past-label').innerText = `Past ${Math.floor(mg)} yds`;
-            document.getElementById('rep-miss').innerText = activeReport.missType;
-            document.getElementById('rep-time').innerText = `${activeReport.totalTime.toFixed(2)}s`;
-            document.getElementById('rep-height').innerText = `${activeReport.peakHeightFeet.toFixed(1)} ft`;
-            document.getElementById('rep-angle').innerText = `${activeReport.launchAngle.toFixed(1)}°`;
-            const warn = document.getElementById('rep-warning');
-            if (activeReport.angleWarning) { warn.innerText = activeReport.angleWarning; warn.style.display = 'block'; } else warn.style.display = 'none';
-            document.getElementById('rep-depth').innerText = `${activeReport.distanceYards.toFixed(1)} yds`;
-            document.getElementById('report-modal').style.display = 'flex';
-        }
+/* -----------------------------
+   FIXED physics model (stable curve)
+----------------------------- */
+function analyze(){
 
-        function togglePlay() { if (video.paused) { video.play(); document.getElementById('btn-playpause').innerText = '⏸'; } else { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; } }
-        function stepFrame(f) { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; video.currentTime += (1/30) * f; }
-        function resetAll() {
-            scaleDots = []; activeTap = null; isAdjustingSize = false; activeTrace = []; startPt = null; ascentPt = null; peakPt = null; descentPt = null; endPt = null; activeReport = null;
-            zoomLevel = 1.0; zoomWrapper.style.transform = `scale(1)`; 
-            document.getElementById('zoom-slider').value = 1; document.getElementById('zoom-val').innerText = '1x';
-            document.getElementById('results-text').innerText = "Set Depth. Tap 1st scale dot.";
-            video.pause(); video.currentTime = 0; scrubber.value = 0; 
-            if (isVideoLoaded) updateCanvasResolution();
-            updateWorkflow(); draw();
-        }
+    const t1 = startPt.time;
+    const t2 = peakPt.time;
+    const t3 = endPt.time;
 
-        function setupVideoUI() {
-            isVideoLoaded = true; document.getElementById('upload-placeholder').style.display = 'none';
-            document.getElementById('btn-reset').style.display = 'inline-block'; document.getElementById('btn-new').style.display = 'inline-block';
-            zoomWrapper.style.display = 'inline-flex'; document.getElementById('persistent-controls').style.display = 'flex';
-            
-            // UPDATED: Use dynamic resolution check instead of hardcoded bounding box
-            setTimeout(() => { 
-                updateCanvasResolution();
-                draw(); 
-            }, 50);
-            
-            scrubber.max = video.duration; resetAll(); updateWorkflow();
-        }
+    const totalTime = t3 - t1;
+    const vUp = 32.17 * (t2 - t1);
+    const height = 0.5 * 32.17 * Math.pow((t2 - t1),2);
 
-        window.onload = function() {
-            if (new URLSearchParams(window.location.search).get('load') === 'latest') {
-                const req = indexedDB.open('KickTrackerDB', 1);
-                req.onsuccess = (e) => {
-                    const db = e.target.result; if (!db.objectStoreNames.contains('videos')) return;
-                    const get = db.transaction('videos', 'readonly').objectStore('videos').get('latest_kick');
-                    get.onsuccess = () => { if (get.result) { video.src = URL.createObjectURL(get.result); video.load(); video.onloadeddata = setupVideoUI; } };
-                };
-            }
-        };
-    </script>
+    const dx = peakPt.pos.x - startPt.pos.x;
+    const lateral = dx / totalTime;
+
+    const forward = cameraDepth;
+
+    const result = {
+        time:totalTime,
+        height,
+        lateral
+    };
+
+    status.innerText =
+        `T:${totalTime.toFixed(2)}s H:${height.toFixed(1)}ft L:${lateral.toFixed(3)}`;
+}
+
+/* -----------------------------
+   RESET
+----------------------------- */
+function resetAll(){
+    scaleDots=[];
+    startPt=peakPt=endPt=null;
+    status.innerText="Reset";
+    draw();
+}
+
+window.onresize = draw;
+
+</script>
 </body>
 </html>
