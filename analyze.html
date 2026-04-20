@@ -562,23 +562,38 @@ function calculateOpticsPhysics() {
     // -----------------------------
     // LATERAL MOTION (your existing drift logic, simplified)
     // -----------------------------
-    const pts = [startPt, ascentPt, peakPt, descentPt, endPt].filter(p => p);
+const pts = [startPt, ascentPt, peakPt, descentPt, endPt].filter(p => p);
 
-    const startX = pts[0].pos.x;
+// normalize time + stabilize weighting
+const t0 = startPt.time;
 
-    let driftSum = 0;
-    let weightSum = 0;
+let weightedCurve = 0;
+let weightSum = 0;
 
-    for (let i = 1; i < pts.length; i++) {
-        const dx = pts[i].pos.x - startX;
-        const tNorm = (pts[i].time - startPt.time) / totalTime;
+for (let i = 1; i < pts.length; i++) {
+    const p = pts[i];
 
-        const w = Math.max(0.2, tNorm);
-        driftSum += dx * w;
-        weightSum += w;
-    }
+    const tNorm = (p.time - t0) / totalTime;
 
-    const lateralDrift = (weightSum > 0 ? driftSum / weightSum : 0);
+    // screen-space drift
+    const dx = p.pos.x - startPt.pos.x;
+
+    // key fix: early motion is visually exaggerated → compress it
+    const timeWeight = Math.sqrt(tNorm);  
+
+    // key fix: reduce late-frame distortion
+    const depthWeight = 1 / (1 + tNorm * 2);
+
+    const w = timeWeight * depthWeight;
+
+    weightedCurve += dx * w;
+    weightSum += w;
+}
+
+let lateralDrift = weightSum > 0 ? weightedCurve / weightSum : 0;
+
+// final stabilization: prevent tiny noise looking like "curve"
+if (Math.abs(lateralDrift) < 0.02) lateralDrift = 0;
 
     // -----------------------------
     // LAUNCH ANGLE
