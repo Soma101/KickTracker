@@ -1,123 +1,150 @@
-<script>
-const fps = 30;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KickTracker</title>
 
+<script src="physics-engine.js"></script>
+
+<style>
+body {
+    margin:0;
+    background:#000;
+    color:#fff;
+    font-family:-apple-system;
+}
+
+canvas {
+    position:absolute;
+    top:0;
+    left:0;
+}
+
+video {
+    max-width:100%;
+}
+</style>
+</head>
+
+<body>
+
+<input type="file" id="file-upload" accept="video/*">
+
+<br><br>
+
+<video id="video-player" playsinline></video>
+<canvas id="overlay"></canvas>
+
+<br>
+
+<button onclick="stepFrame(-1)">-1</button>
+<button id="btn-playpause" onclick="togglePlay()">▶</button>
+<button onclick="stepFrame(1)">+1</button>
+
+<br><br>
+
+<button id="btn-workflow">Start</button>
+
+<script>
 const video = document.getElementById('video-player');
 const canvas = document.getElementById('overlay');
 const ctx = canvas.getContext('2d');
-const zoomWrapper = document.getElementById('zoom-wrapper');
-const scrubber = document.getElementById('scrubber');
-const statusText = document.getElementById('status-text');
+const btn = document.getElementById('btn-workflow');
 
-let isVideoLoaded = false;
-let isScrubbing = false;
-let zoomLevel = 1.0;
-let cameraDistance = 15.0;
-
-// ✅ UPDATED STATE (5 POINTS)
-let scaleDots = [];
 let activeTap = null;
+let scaleDots = [];
+
 let startPt = null;
 let midUpPt = null;
 let peakPt = null;
 let midDownPt = null;
 let endPt = null;
 
-// animation
 let animateCurve = false;
 let animT = 0;
 
 const physics = new KickPhysicsEngine();
 
-document.getElementById('file-upload').addEventListener('change', (e) => {
+
+// ================= LOAD VIDEO =================
+document.getElementById('file-upload').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
+
     video.src = URL.createObjectURL(file);
-    video.load();
+
     video.onloadeddata = () => {
-        document.getElementById('upload-placeholder').style.display = 'none';
-        zoomWrapper.style.display = 'inline-flex';
-        document.getElementById('persistent-controls').style.display = 'flex';
-        isVideoLoaded = true;
-        scrubber.max = video.duration;
         resizeCanvas();
         resetAll();
     };
 });
 
 function resizeCanvas() {
-    if (!isVideoLoaded) return;
-    const rect = video.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    canvas.style.width = rect.width + 'px';
-    canvas.style.height = rect.height + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas.width = video.clientWidth;
+    canvas.height = video.clientHeight;
 }
-window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 
-document.getElementById('cam-depth').addEventListener('input', (e) => {
-    cameraDistance = parseFloat(e.target.value);
-    document.getElementById('depth-val').innerText = cameraDistance;
-});
+window.addEventListener('resize', resizeCanvas);
 
-document.getElementById('zoom-slider').addEventListener('input', (e) => {
-    zoomLevel = parseFloat(e.target.value);
-    document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
-    zoomWrapper.style.transform = `scale(${zoomLevel})`;
-    draw();
-});
 
-video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
-scrubber.addEventListener('input', (e) => { isScrubbing = true; video.currentTime = e.target.value; });
-scrubber.addEventListener('change', () => { isScrubbing = false; });
-
+// ================= PLAYBACK =================
 function togglePlay() {
-    if (video.paused) { video.play(); btn.innerText = '⏸'; }
-    else { video.pause(); btn.innerText = '▶'; }
+    const btn = document.getElementById('btn-playpause');
+
+    if (video.paused) {
+        video.play();
+        btn.innerText = '⏸';
+    } else {
+        video.pause();
+        btn.innerText = '▶';
+    }
 }
 
 function stepFrame(f) {
     video.pause();
-    video.currentTime += (1/fps) * f;
+    video.currentTime += (1/30) * f;
 }
 
-canvas.addEventListener('pointerdown', (e) => {
+
+// ================= TAP =================
+canvas.addEventListener('pointerdown', e => {
     const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width);
-    const y = ((e.clientY - rect.top) / rect.height);
-    activeTap = {x, y};
-    updateWorkflow();
-    draw();
+    activeTap = {
+        x: (e.clientX - rect.left) / rect.width,
+        y: (e.clientY - rect.top) / rect.height
+    };
 });
 
+
+// ================= DRAW =================
 function draw() {
-    if (!isVideoLoaded) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    ctx.clearRect(0, 0, w, h);
+    const w = canvas.width;
+    const h = canvas.height;
 
-    const dot = (pt, color) => {
+    const drawDot = (pt,color) => {
         if (!pt) return;
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(pt.pos.x * w, pt.pos.y * h, 6/zoomLevel, 0, Math.PI*2);
+        ctx.arc(pt.pos.x*w, pt.pos.y*h, 6, 0, Math.PI*2);
         ctx.fill();
     };
 
-    dot(startPt,'#34c759');
-    dot(midUpPt,'#ffff00');
-    dot(peakPt,'#ff9500');
-    dot(midDownPt,'#af52de');
-    dot(endPt,'#ff3b30');
+    drawDot(startPt,'green');
+    drawDot(midUpPt,'cyan');
+    drawDot(peakPt,'orange');
+    drawDot(midDownPt,'cyan');
+    drawDot(endPt,'red');
 
-    // ✅ CURVE
+    // SAFE CURVE
     if (startPt && midUpPt && peakPt && midDownPt && endPt) {
         ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 2/zoomLevel;
+        ctx.lineWidth = 2;
+
         ctx.beginPath();
-        ctx.moveTo(startPt.pos.x*w,startPt.pos.y*h);
+        ctx.moveTo(startPt.pos.x*w, startPt.pos.y*h);
 
         if (animateCurve) {
             animT += 0.02;
@@ -125,28 +152,37 @@ function draw() {
 
             const t = animT;
 
+            const s = startPt.pos;
+            const m1 = midUpPt.pos;
+            const p = peakPt.pos;
+            const m2 = midDownPt.pos;
+            const e = endPt.pos;
+
             const x =
-                Math.pow(1-t,4)*startPt.pos.x +
-                4*Math.pow(1-t,3)*t*midUpPt.pos.x +
-                6*Math.pow(1-t,2)*t*t*peakPt.pos.x +
-                4*(1-t)*t*t*t*midDownPt.pos.x +
-                t*t*t*t*endPt.pos.x;
+                Math.pow(1-t,4)*s.x +
+                4*Math.pow(1-t,3)*t*m1.x +
+                6*Math.pow(1-t,2)*t*t*p.x +
+                4*(1-t)*t*t*t*m2.x +
+                t*t*t*t*e.x;
 
             const y =
-                Math.pow(1-t,4)*startPt.pos.y +
-                4*Math.pow(1-t,3)*t*midUpPt.pos.y +
-                6*Math.pow(1-t,2)*t*t*peakPt.pos.y +
-                4*(1-t)*t*t*t*midDownPt.pos.y +
-                t*t*t*t*endPt.pos.y;
+                Math.pow(1-t,4)*s.y +
+                4*Math.pow(1-t,3)*t*m1.y +
+                6*Math.pow(1-t,2)*t*t*p.y +
+                4*(1-t)*t*t*t*m2.y +
+                t*t*t*t*e.y;
 
-            ctx.lineTo(x*w,y*h);
+            ctx.lineTo(x*w, y*h);
 
             if (animT < 1) requestAnimationFrame(draw);
         } else {
             ctx.bezierCurveTo(
-                midUpPt.pos.x*w, midUpPt.pos.y*h,
-                midDownPt.pos.x*w, midDownPt.pos.y*h,
-                endPt.pos.x*w, endPt.pos.y*h
+                midUpPt.pos.x*w,
+                midUpPt.pos.y*h,
+                midDownPt.pos.x*w,
+                midDownPt.pos.y*h,
+                endPt.pos.x*w,
+                endPt.pos.y*h
             );
         }
 
@@ -154,121 +190,59 @@ function draw() {
     }
 }
 
-function updateWorkflow() {
-    const btn = document.getElementById('btn-workflow');
+
+// ================= WORKFLOW =================
+btn.onclick = () => {
 
     if (scaleDots.length < 2) {
-        statusText.innerText = "Set 2 scale points";
-        btn.innerText = "CONFIRM DOT";
-        btn.onclick = () => { scaleDots.push(activeTap); activeTap=null; updateWorkflow(); draw(); };
+        scaleDots.push(activeTap);
     }
     else if (!startPt) {
-        statusText.innerText = "Mark IMPACT";
-        btn.innerText = "IMPACT";
-        btn.onclick = () => { startPt = {time:video.currentTime,pos:activeTap}; activeTap=null; updateWorkflow(); draw(); };
+        startPt = {pos: activeTap, time: video.currentTime};
     }
     else if (!midUpPt) {
-        statusText.innerText = "Mark HALF UP";
-        btn.innerText = "HALF UP";
-        btn.onclick = () => { midUpPt = {time:video.currentTime,pos:activeTap}; activeTap=null; updateWorkflow(); draw(); };
+        midUpPt = {pos: activeTap, time: video.currentTime};
     }
     else if (!peakPt) {
-        statusText.innerText = "Mark APEX";
-        btn.innerText = "APEX";
-        btn.onclick = () => { peakPt = {time:video.currentTime,pos:activeTap}; activeTap=null; updateWorkflow(); draw(); };
+        peakPt = {pos: activeTap, time: video.currentTime};
     }
     else if (!midDownPt) {
-        statusText.innerText = "Mark HALF DOWN";
-        btn.innerText = "HALF DOWN";
-        btn.onclick = () => { midDownPt = {time:video.currentTime,pos:activeTap}; activeTap=null; updateWorkflow(); draw(); };
+        midDownPt = {pos: activeTap, time: video.currentTime};
     }
     else if (!endPt) {
-        statusText.innerText = "Mark LANDING";
-        btn.innerText = "LANDING";
-        btn.onclick = () => {
-            endPt = {time:video.currentTime,pos:activeTap};
-            activeTap=null;
-            handleCalculateAndReport();
-            updateWorkflow();
-            draw();
-        };
-    }
-    else {
-        statusText.innerText = "Done";
-        btn.innerText = "VIEW REPORT";
-        btn.onclick = () => document.getElementById('report-modal').style.display='flex';
-    }
-}
+        endPt = {pos: activeTap, time: video.currentTime};
 
-function handleCalculateAndReport() {
-    // Pass all 8 arguments exactly as the new engine expects them
-    const r = physics.calculate(
-        startPt, 
-        midUpPt, 
-        peakPt, 
-        midDownPt, 
-        endPt,
-        scaleDots, 
-        cameraDistance, 
-        canvas.clientWidth
-    );
+        // 🔥 RUN ANALYSIS
+        const result = physics.calculate(
+            startPt,
+            midUpPt,
+            peakPt,
+            midDownPt,
+            endPt,
+            scaleDots,
+            15,
+            canvas.width
+        );
 
-    // Update the Actuarial Report UI
-    document.getElementById('rep-max').innerText = `≤ ${Math.floor(r.maxGoodDistance)} yds`;
-    document.getElementById('rep-miss').innerText = r.drift;
-    document.getElementById('rep-time').innerText = `${r.time.toFixed(2)}s`;
-    document.getElementById('rep-height').innerText = `${r.height.toFixed(1)} ft`;
-    document.getElementById('rep-angle').innerText = `${r.angle.toFixed(1)}°`;
+        console.log("RESULT:", result);
 
-    // Draw the visual trajectory curve
-    drawReportCurve();
-
-    // Show the modal
-    document.getElementById('report-modal').style.display = 'flex';
-}
-    
-function drawReportCurve(){
-    let c = document.getElementById('report-curve');
-    if(!c){
-        c = document.createElement('canvas');
-        c.id='report-curve';
-        c.style.width='100%';
-        c.style.height='150px';
-        document.querySelector('.report-content').appendChild(c);
+        animateCurve = true;
+        animT = 0;
     }
 
-    const ctx2 = c.getContext('2d');
-    c.width = c.clientWidth;
-    c.height = c.clientHeight;
-
-    ctx2.clearRect(0,0,c.width,c.height);
-
-    if(!startPt) return;
-
-    ctx2.strokeStyle='cyan';
-    ctx2.beginPath();
-    ctx2.moveTo(startPt.pos.x*c.width,startPt.pos.y*c.height);
-
-    ctx2.bezierCurveTo(
-        midUpPt.pos.x*c.width, midUpPt.pos.y*c.height,
-        midDownPt.pos.x*c.width, midDownPt.pos.y*c.height,
-        endPt.pos.x*c.width, endPt.pos.y*c.height
-    );
-
-    ctx2.stroke();
-}
-
-function toggleAnimation(){
-    animateCurve = !animateCurve;
-    animT = 0;
     draw();
-}
+};
 
+
+// ================= RESET =================
 function resetAll() {
     scaleDots = [];
-    activeTap = startPt = midUpPt = peakPt = midDownPt = endPt = null;
+    startPt = midUpPt = peakPt = midDownPt = endPt = null;
+    animateCurve = false;
     animT = 0;
-    updateWorkflow();
     draw();
 }
+
 </script>
+</body>
+</html>
