@@ -1,248 +1,479 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KickTracker</title>
-
-<script src="physics-engine.js"></script>
-
-<style>
-body {
-    margin:0;
-    background:#000;
-    color:#fff;
-    font-family:-apple-system;
-}
-
-canvas {
-    position:absolute;
-    top:0;
-    left:0;
-}
-
-video {
-    max-width:100%;
-}
-</style>
-</head>
-
-<body>
-
-<input type="file" id="file-upload" accept="video/*">
-
-<br><br>
-
-<video id="video-player" playsinline></video>
-<canvas id="overlay"></canvas>
-
-<br>
-
-<button onclick="stepFrame(-1)">-1</button>
-<button id="btn-playpause" onclick="togglePlay()">▶</button>
-<button onclick="stepFrame(1)">+1</button>
-
-<br><br>
-
-<button id="btn-workflow">Start</button>
-
-<script>
-const video = document.getElementById('video-player');
-const canvas = document.getElementById('overlay');
-const ctx = canvas.getContext('2d');
-const btn = document.getElementById('btn-workflow');
-
-let activeTap = null;
-let scaleDots = [];
-
-let startPt = null;
-let midUpPt = null;
-let peakPt = null;
-let midDownPt = null;
-let endPt = null;
-
-let animateCurve = false;
-let animT = 0;
-
-const physics = new KickPhysicsEngine();
-
-
-// ================= LOAD VIDEO =================
-document.getElementById('file-upload').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    video.src = URL.createObjectURL(file);
-
-    video.onloadeddata = () => {
-        resizeCanvas();
-        resetAll();
-    };
-});
-
-function resizeCanvas() {
-    canvas.width = video.clientWidth;
-    canvas.height = video.clientHeight;
-}
-
-window.addEventListener('resize', resizeCanvas);
-
-
-// ================= PLAYBACK =================
-function togglePlay() {
-    const btn = document.getElementById('btn-playpause');
-
-    if (video.paused) {
-        video.play();
-        btn.innerText = '⏸';
-    } else {
-        video.pause();
-        btn.innerText = '▶';
-    }
-}
-
-function stepFrame(f) {
-    video.pause();
-    video.currentTime += (1/30) * f;
-}
-
-
-// ================= TAP =================
-canvas.addEventListener('pointerdown', e => {
-    const rect = canvas.getBoundingClientRect();
-    activeTap = {
-        x: (e.clientX - rect.left) / rect.width,
-        y: (e.clientY - rect.top) / rect.height
-    };
-});
-
-
-// ================= DRAW =================
-function draw() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    const w = canvas.width;
-    const h = canvas.height;
-
-    const drawDot = (pt,color) => {
-        if (!pt) return;
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(pt.pos.x*w, pt.pos.y*h, 6, 0, Math.PI*2);
-        ctx.fill();
-    };
-
-    drawDot(startPt,'green');
-    drawDot(midUpPt,'cyan');
-    drawDot(peakPt,'orange');
-    drawDot(midDownPt,'cyan');
-    drawDot(endPt,'red');
-
-    // SAFE CURVE
-    if (startPt && midUpPt && peakPt && midDownPt && endPt) {
-        ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 2;
-
-        ctx.beginPath();
-        ctx.moveTo(startPt.pos.x*w, startPt.pos.y*h);
-
-        if (animateCurve) {
-            animT += 0.02;
-            if (animT > 1) animT = 1;
-
-            const t = animT;
-
-            const s = startPt.pos;
-            const m1 = midUpPt.pos;
-            const p = peakPt.pos;
-            const m2 = midDownPt.pos;
-            const e = endPt.pos;
-
-            const x =
-                Math.pow(1-t,4)*s.x +
-                4*Math.pow(1-t,3)*t*m1.x +
-                6*Math.pow(1-t,2)*t*t*p.x +
-                4*(1-t)*t*t*t*m2.x +
-                t*t*t*t*e.x;
-
-            const y =
-                Math.pow(1-t,4)*s.y +
-                4*Math.pow(1-t,3)*t*m1.y +
-                6*Math.pow(1-t,2)*t*t*p.y +
-                4*(1-t)*t*t*t*m2.y +
-                t*t*t*t*e.y;
-
-            ctx.lineTo(x*w, y*h);
-
-            if (animT < 1) requestAnimationFrame(draw);
-        } else {
-            ctx.bezierCurveTo(
-                midUpPt.pos.x*w,
-                midUpPt.pos.y*h,
-                midDownPt.pos.x*w,
-                midDownPt.pos.y*h,
-                endPt.pos.x*w,
-                endPt.pos.y*h
-            );
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>KickTracker App</title>
+    <script src="physics-engine.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
-        ctx.stroke();
-    }
-}
+        /* Top Bar */
+        .sys-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 10px;
+            background-color: #1c1c1e;
+        }
+        .sys-buttons button {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #btn-home { background: #007aff; color: white; margin-right: auto; }
+        #btn-reset { background: #3a3a3c; color: white; }
+        #file-upload { display: none; }
 
+        /* Dashboard */
+        .dashboard {
+            background-color: #1c1c1e;
+            padding: 10px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .row { display: flex; align-items: center; gap: 10px; justify-content: center; }
+        input[type="range"] { padding: 4px; border-radius: 4px; background: #2c2c2e; flex-grow: 1; }
+        
+        .results-box {
+            background-color: #2c2c2e;
+            padding: 8px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            text-align: center;
+            color: #007aff;
+        }
 
-// ================= WORKFLOW =================
-btn.onclick = () => {
+        /* Viewport fixes for Laptop + Mobile */
+        .viewport-container {
+            flex: 1;
+            min-height: 0; 
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+        .zoom-wrapper {
+            position: relative;
+            display: inline-flex;
+            max-width: 100%;
+            max-height: 100%;
+            transform-origin: center center;
+        }
+        video {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        canvas {
+            position: absolute;
+            top: 0; left: 0;
+            touch-action: none; 
+        }
 
-    if (scaleDots.length < 2) {
-        scaleDots.push(activeTap);
-    }
-    else if (!startPt) {
-        startPt = {pos: activeTap, time: video.currentTime};
-    }
-    else if (!midUpPt) {
-        midUpPt = {pos: activeTap, time: video.currentTime};
-    }
-    else if (!peakPt) {
-        peakPt = {pos: activeTap, time: video.currentTime};
-    }
-    else if (!midDownPt) {
-        midDownPt = {pos: activeTap, time: video.currentTime};
-    }
-    else if (!endPt) {
-        endPt = {pos: activeTap, time: video.currentTime};
+        .upload-placeholder {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #8e8e93;
+            cursor: pointer;
+            border: 2px dashed #3a3a3c;
+            padding: 30px;
+            border-radius: 12px;
+        }
 
-        // 🔥 RUN ANALYSIS
-        const result = physics.calculate(
-            startPt,
-            midUpPt,
-            peakPt,
-            midDownPt,
-            endPt,
-            scaleDots,
-            15,
-            canvas.width
-        );
+        /* Controls */
+        .controls {
+            background-color: #1c1c1e;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .playback-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+        .playback-row button {
+            background: #2c2c2e;
+            border: none;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 6px;
+        }
 
-        console.log("RESULT:", result);
+        .workflow-bar {
+            background-color: #1c1c1e;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+        }
+        .workflow-btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            color: white;
+            background: #3a3a3c;
+        }
 
-        animateCurve = true;
-        animT = 0;
-    }
+        /* Actuarial Report */
+        #report-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+        .report-content {
+            background: #1c1c1e;
+            width: 90%;
+            max-width: 400px;
+            border-radius: 16px;
+            padding: 20px;
+        }
+        .report-section {
+            background: #2c2c2e;
+            border-radius: 10px;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+        }
+        .report-header { font-weight: bold; margin-bottom: 10px; font-size: 14px; color: #8e8e93; }
+        .report-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 16px; border-bottom: 1px solid #3a3a3c; padding-bottom: 8px;}
+        .report-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .text-green { color: #34c759; font-weight: bold; }
+        .text-orange { color: #ff9500; font-weight: bold; }
+        .btn-close-modal { width: 100%; padding: 14px; background: #007aff; color: white; border: none; border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 10px; }
+    </style>
+</head>
+<body>
 
-    draw();
-};
+    <div class="sys-buttons">
+        <button id="btn-home">Home</button>
+        <button id="btn-reset" onclick="resetAll()">Reset App</button>
+        <button id="btn-new" onclick="document.getElementById('file-upload').click()">New Video</button>
+        <input type="file" id="file-upload" accept="video/*">
+    </div>
 
+    <div class="dashboard">
+        <div class="row" style="font-size: 14px; font-weight: bold;">
+            Cam Depth (Yds): <span id="depth-val">15</span>
+            <input type="range" id="cam-depth" min="5" max="50" step="1" value="15">
+        </div>
+        <div class="results-box" id="status-text">Upload a video to begin.</div>
+    </div>
 
-// ================= RESET =================
-function resetAll() {
-    scaleDots = [];
-    startPt = midUpPt = peakPt = midDownPt = endPt = null;
-    animateCurve = false;
-    animT = 0;
-    draw();
-}
+    <div class="viewport-container">
+        <div class="upload-placeholder" id="upload-placeholder" onclick="document.getElementById('file-upload').click()">
+            Upload Video
+        </div>
+        
+        <div class="zoom-wrapper" id="zoom-wrapper" style="display: none;">
+            <video id="video-player" playsinline></video>
+            <canvas id="overlay"></canvas>
+        </div>
+    </div>
 
-</script>
+    <div class="controls" id="persistent-controls" style="display: none;">
+        <div class="row" style="padding: 0 10px;">
+            <span style="font-size: 12px; font-weight: bold; width: 45px;">Zoom:</span>
+            <input type="range" id="zoom-slider" min="1" max="10" step="0.1" value="1">
+            <span id="zoom-val" style="font-size: 12px; width: 35px; text-align: right;">1x</span>
+        </div>
+
+        <div id="playback-controls">
+            <input type="range" id="scrubber" min="0" max="1" step="0.01" value="0" style="width: 100%; margin-bottom: 10px;">
+            <div class="playback-row">
+                <button onclick="stepFrame(-1)">-1 Fr</button>
+                <button id="btn-playpause" onclick="togglePlay()" style="font-size: 18px; padding: 6px 20px;">⏸</button>
+                <button onclick="stepFrame(1)">+1 Fr</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="workflow-bar">
+        <button id="btn-workflow" class="workflow-btn" disabled>Awaiting Video...</button>
+    </div>
+
+    <div id="report-modal">
+        <div class="report-content">
+            <h2 style="text-align:center; margin-top:0;">Actuarial Report</h2>
+            <div class="report-section">
+                <div class="report-header">Scoring Projection</div>
+                <div class="report-row"><span>Good From</span> <span class="text-green" id="rep-max">≤ 0 yds</span></div>
+                <div class="report-row"><span>Drift Profile</span> <span id="rep-miss" style="font-weight:bold;">--</span></div>
+            </div>
+            <div class="report-section">
+                <div class="report-header">Kinematics</div>
+                <div class="report-row"><span>Total Hang Time</span> <span id="rep-time" style="font-weight:bold;">--s</span></div>
+                <div class="report-row"><span>Peak Height</span> <span id="rep-height" style="font-weight:bold;">-- ft</span></div>
+                <div class="report-row"><span>Launch Angle</span> <span id="rep-angle" class="text-orange">--°</span></div>
+            </div>
+            <button class="btn-close-modal" onclick="document.getElementById('report-modal').style.display='none'">Close Report</button>
+        </div>
+    </div>
+
+    <script>
+        const fps = 30; // standard approx for frame stepping
+        
+        const video = document.getElementById('video-player');
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+        const zoomWrapper = document.getElementById('zoom-wrapper');
+        const scrubber = document.getElementById('scrubber');
+        const statusText = document.getElementById('status-text');
+        
+        let isVideoLoaded = false;
+        let isScrubbing = false;
+        let zoomLevel = 1.0;
+        let cameraDistance = 15.0;
+
+        // State Machine Data
+        let scaleDots = []; 
+        let activeTap = null;
+        let startPt = null; 
+        let peakPt = null; 
+        let endPt = null;
+
+        // Initialize Physics Engine
+        const physics = new KickPhysicsEngine();
+
+        // 1. Loading
+        document.getElementById('file-upload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            video.src = URL.createObjectURL(file);
+            video.load();
+            video.onloadeddata = () => {
+                document.getElementById('upload-placeholder').style.display = 'none';
+                zoomWrapper.style.display = 'inline-flex';
+                document.getElementById('persistent-controls').style.display = 'flex';
+                isVideoLoaded = true;
+                scrubber.max = video.duration;
+                resizeCanvas();
+                resetAll();
+            };
+        });
+
+        // 2. Viewport Clipping & DPI Sync
+        function resizeCanvas() {
+            if (!isVideoLoaded) return;
+            const rect = video.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+
+        // Inputs
+        document.getElementById('cam-depth').addEventListener('input', (e) => {
+            cameraDistance = parseFloat(e.target.value);
+            document.getElementById('depth-val').innerText = cameraDistance;
+        });
+
+        document.getElementById('zoom-slider').addEventListener('input', (e) => {
+            zoomLevel = parseFloat(e.target.value);
+            document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
+            zoomWrapper.style.transform = `scale(${zoomLevel})`;
+            if (activeTap) {
+                zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
+            }
+            draw(); 
+        });
+
+        // Playback
+        video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
+        scrubber.addEventListener('input', (e) => { isScrubbing = true; video.currentTime = e.target.value; });
+        scrubber.addEventListener('change', () => { isScrubbing = false; });
+        
+        function togglePlay() { 
+            if (video.paused) { video.play(); document.getElementById('btn-playpause').innerText = '⏸'; } 
+            else { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; } 
+        }
+        function stepFrame(f) { 
+            video.pause(); 
+            document.getElementById('btn-playpause').innerText = '▶'; 
+            video.currentTime += (1/fps) * f; 
+        }
+
+        // 3. Canvas Tapping (Normalized to video coords)
+        canvas.addEventListener('pointerdown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) / rect.width);
+            const y = ((e.clientY - rect.top) / rect.height);
+            activeTap = {x, y};
+            if(zoomLevel > 1) zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
+            updateWorkflow();
+            draw();
+        });
+
+        // 4. DPR Normalized Reticles
+        function draw() {
+            if (!isVideoLoaded) return;
+            const w = canvas.clientWidth; 
+            const h = canvas.clientHeight;
+            ctx.clearRect(0, 0, w, h);
+            
+            // Critical fix: divide radius by zoom to keep crisp and constant size
+            const invZoom = 1.0 / zoomLevel;
+            const dotRad = 6 * invZoom;
+
+            // Draw Scale line
+            if (scaleDots.length === 2) {
+                ctx.strokeStyle = '#3a3a3c';
+                ctx.lineWidth = 2 * invZoom;
+                ctx.beginPath();
+                ctx.moveTo(scaleDots[0].x * w, scaleDots[0].y * h);
+                ctx.lineTo(scaleDots[1].x * w, scaleDots[1].y * h);
+                ctx.stroke();
+            }
+
+            ctx.fillStyle = '#007aff';
+            scaleDots.forEach(pt => {
+                ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, dotRad, 0, Math.PI * 2); ctx.fill();
+            });
+
+            if (activeTap) {
+                const px = activeTap.x * w; const py = activeTap.y * h; const len = 12 * invZoom;
+                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 2.5 * invZoom;
+                ctx.beginPath(); ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); 
+                ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); ctx.stroke();
+            }
+
+            const drawMarker = (pt, color) => {
+                if (!pt) return; 
+                ctx.fillStyle = color; 
+                ctx.beginPath(); ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2); ctx.fill();
+            };
+            drawMarker(startPt, '#34c759'); 
+            drawMarker(peakPt, '#ff9500'); 
+            drawMarker(endPt, '#ff3b30'); 
+        }
+
+        // 5. Frictionless State Machine
+        function updateWorkflow() {
+            if (!isVideoLoaded) return;
+            const btn = document.getElementById('btn-workflow');
+            
+            if (scaleDots.length === 0) {
+                statusText.innerText = "Step 1: Tap to set 1st scale dot (10 yds)";
+                btn.innerText = "CONFIRM 1ST DOT"; 
+                btn.style.background = '#007aff'; 
+                btn.disabled = (activeTap === null);
+                btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
+            } 
+            else if (scaleDots.length === 1) {
+                statusText.innerText = "Step 2: Tap to set 2nd scale dot (10 yds)";
+                btn.innerText = "CONFIRM 2ND DOT"; 
+                btn.disabled = (activeTap === null);
+                btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
+            } 
+            else if (startPt === null) {
+                statusText.innerText = "Scrub to IMPACT frame. Tap the ball.";
+                btn.innerText = "MARK IMPACT"; 
+                btn.style.background = '#34c759'; 
+                btn.disabled = (activeTap === null);
+                btn.onclick = () => { startPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateWorkflow(); draw(); };
+            } 
+            else if (peakPt === null) {
+                statusText.innerText = "Scrub to PEAK frame. Tap the ball.";
+                btn.innerText = "MARK PEAK"; 
+                btn.style.background = '#ff9500'; 
+                btn.disabled = (activeTap === null);
+                btn.onclick = () => { peakPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateWorkflow(); draw(); };
+            } 
+            else if (endPt === null) {
+                statusText.innerText = "Scrub to LANDING frame. Tap the ball.";
+                btn.innerText = "MARK LANDING"; 
+                btn.style.background = '#ff3b30'; 
+                btn.disabled = (activeTap === null);
+                btn.onclick = () => { 
+                    endPt = {time: video.currentTime, pos: activeTap}; 
+                    activeTap = null; 
+                    handleCalculateAndReport(); 
+                    updateWorkflow(); 
+                    draw(); 
+                };
+            } 
+            else {
+                statusText.innerText = "Analysis Complete.";
+                btn.innerText = "VIEW REPORT"; 
+                btn.style.background = '#007aff'; 
+                btn.disabled = false;
+                btn.onclick = () => document.getElementById('report-modal').style.display = 'flex';
+            }
+        }
+
+        // 6. UI Hand-off to Physics Engine
+        function handleCalculateAndReport() {
+            // Call the isolated physics engine
+            const activeReport = physics.calculate(startPt, peakPt, endPt, scaleDots, cameraDistance, canvas.clientWidth);
+
+            // 100 Kick History Logger
+            let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
+            history.unshift(activeReport);
+            if(history.length > 100) history.pop(); 
+            localStorage.setItem('kickHistory', JSON.stringify(history));
+
+            // Populate Modal UI
+            document.getElementById('rep-max').innerText = `≤ ${Math.floor(activeReport.maxGoodDistance)} yds`;
+            document.getElementById('rep-miss').innerText = activeReport.drift;
+            document.getElementById('rep-time').innerText = `${activeReport.time.toFixed(2)}s`;
+            document.getElementById('rep-height').innerText = `${activeReport.height.toFixed(1)} ft`;
+            document.getElementById('rep-angle').innerText = `${activeReport.angle.toFixed(1)}°`;
+
+            document.getElementById('report-modal').style.display = 'flex';
+        }
+
+        function resetAll() {
+            scaleDots = []; 
+            activeTap = startPt = peakPt = endPt = null;
+            zoomLevel = 1.0; 
+            zoomWrapper.style.transform = `scale(1)`; 
+            document.getElementById('zoom-slider').value = 1; 
+            document.getElementById('zoom-val').innerText = '1x';
+            if(isVideoLoaded) {
+                video.pause(); 
+                video.currentTime = 0; 
+                scrubber.value = 0;
+            }
+            updateWorkflow(); 
+            draw();
+        }
+    </script>
 </body>
 </html>
