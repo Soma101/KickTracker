@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>KickTracker App</title>
+    <script src="physics-engine.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -61,7 +62,7 @@
         /* Viewport fixes for Laptop + Mobile */
         .viewport-container {
             flex: 1;
-            min-height: 0; /* Critical for flex shrinking on laptops */
+            min-height: 0; 
             position: relative;
             overflow: hidden;
             display: flex;
@@ -244,7 +245,6 @@
     </div>
 
     <script>
-        const gravity = 32.17;
         const fps = 30; // standard approx for frame stepping
         
         const video = document.getElementById('video-player');
@@ -265,6 +265,9 @@
         let startPt = null; 
         let peakPt = null; 
         let endPt = null;
+
+        // Initialize Physics Engine
+        const physics = new KickPhysicsEngine();
 
         // 1. Loading
         document.getElementById('file-upload').addEventListener('change', (e) => {
@@ -421,7 +424,7 @@
                 btn.onclick = () => { 
                     endPt = {time: video.currentTime, pos: activeTap}; 
                     activeTap = null; 
-                    calculatePhysics(); 
+                    handleCalculateAndReport(); 
                     updateWorkflow(); 
                     draw(); 
                 };
@@ -435,54 +438,10 @@
             }
         }
 
-        // 6. Kinematics & "Good From" Generation
-        function calculatePhysics() {
-            const t1 = startPt.time;
-            const t2 = peakPt.time;
-            const t3 = endPt.time;
-            
-            const totalTime = Math.abs(t3 - t1);
-            const peakTime = Math.abs(t2 - t1);
-            
-            // Vertical Physics
-            const heightFt = 0.5 * gravity * Math.pow(peakTime, 2);
-            const vUp = gravity * peakTime;
-
-            // Forward Velocity (Yards/sec)
-            const vFwd = cameraDistance / (totalTime > 0 ? totalTime : 1);
-            const launchAngleDeg = Math.atan2(vUp, vFwd * 3) * (180 / Math.PI); // Convert yards to feet for angle
-
-            // Lateral Drift Math
-            const dxPixels = endPt.pos.x - startPt.pos.x;
-            const scalePixelDist = Math.sqrt(Math.pow((scaleDots[1].x - scaleDots[0].x), 2) + Math.pow((scaleDots[1].y - scaleDots[0].y), 2));
-            const yardsPerPixel = 10.0 / (scalePixelDist || 1);
-            const lateralDriftYards = dxPixels * canvas.clientWidth * yardsPerPixel;
-
-            // Good From logic (Assuming goal posts are ~6.16 yards wide, so +/- 3.08 yards from center)
-            const toleranceYards = 3.08;
-            let maxGood = 0;
-            if (Math.abs(lateralDriftYards) < 0.2) {
-                maxGood = cameraDistance + 20; // Straight kick, good from far
-            } else {
-                // Similar triangles: (MaxGood / cameraDistance) = (tolerance / |lateralDrift|)
-                maxGood = (toleranceYards / Math.abs(lateralDriftYards)) * cameraDistance;
-                // Cap it by vertical drop distance (can't be good if it drops below 10ft crossbar)
-                const vZ0 = vFwd * 3; 
-                const a = 0.5 * gravity, b = -vUp, c = 10.0;
-                const disc = (b * b) - (4 * a * c);
-                const crossbarTime = disc > 0 ? (-b + Math.sqrt(disc)) / (2 * a) : totalTime;
-                const dropLimitYards = (vZ0 * crossbarTime) / 3;
-                
-                maxGood = Math.min(maxGood, dropLimitYards);
-            }
-
-            const activeReport = {
-                maxGoodDistance: maxGood,
-                drift: Math.abs(lateralDriftYards) < 0.5 ? "Straight" : (lateralDriftYards > 0 ? "Drift Right" : "Drift Left"),
-                time: totalTime,
-                height: heightFt,
-                angle: launchAngleDeg
-            };
+        // 6. UI Hand-off to Physics Engine
+        function handleCalculateAndReport() {
+            // Call the isolated physics engine
+            const activeReport = physics.calculate(startPt, peakPt, endPt, scaleDots, cameraDistance, canvas.clientWidth);
 
             // 100 Kick History Logger
             let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
@@ -490,7 +449,7 @@
             if(history.length > 100) history.pop(); 
             localStorage.setItem('kickHistory', JSON.stringify(history));
 
-            // Populate Modal
+            // Populate Modal UI
             document.getElementById('rep-max').innerText = `≤ ${Math.floor(activeReport.maxGoodDistance)} yds`;
             document.getElementById('rep-miss').innerText = activeReport.drift;
             document.getElementById('rep-time').innerText = `${activeReport.time.toFixed(2)}s`;
