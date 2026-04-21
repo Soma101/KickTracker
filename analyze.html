@@ -1,242 +1,264 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KickTracker</title>
-<script src="physics-engine.js"></script>
-
-<style>
-body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
-.viewport-container { position:relative; height:60vh; display:flex; justify-content:center; align-items:center; }
-video { max-width:100%; max-height:100%; }
-canvas { position:absolute; top:0; left:0; }
-
-.controls, .dashboard { padding:10px; background:#111; }
-button { padding:10px; margin:5px; }
-
-#report-modal {
- display:none; position:fixed; inset:0;
- background:rgba(0,0,0,0.8);
- justify-content:center; align-items:center;
-}
-.report-content {
- background:#111; padding:20px; border-radius:10px;
- width:90%; max-width:400px;
-}
-</style>
-</head>
-
-<body>
-
-<input type="file" id="file-upload" accept="video/*">
-
-<div class="dashboard">
-Cam Depth: <input type="range" id="cam-depth" min="5" max="50" value="15">
-<span id="depth-val">15</span>
-</div>
-
-<div class="viewport-container">
-<video id="video" controls></video>
-<canvas id="canvas"></canvas>
-</div>
-
-<div class="controls">
-<button id="workflow-btn">Start</button>
-<button onclick="toggleAnimation()">Toggle Animation</button>
-</div>
-
-<div id="report-modal">
-<div class="report-content">
-<h3>Report</h3>
-<div id="rep"></div>
-<canvas id="report-curve" style="width:100%; height:150px;"></canvas>
-<button onclick="closeReport()">Close</button>
-</div>
-</div>
-
 <script>
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
+const fps = 30;
+
+const video = document.getElementById('video-player');
+const canvas = document.getElementById('overlay');
 const ctx = canvas.getContext('2d');
+const zoomWrapper = document.getElementById('zoom-wrapper');
+const scrubber = document.getElementById('scrubber');
+const statusText = document.getElementById('status-text');
 
-let physics = new KickPhysicsEngine();
+let isVideoLoaded = false;
+let isScrubbing = false;
+let zoomLevel = 1.0;
+let cameraDistance = 15.0;
 
-let startPt=null, midUpPt=null, peakPt=null, midDownPt=null, endPt=null;
-let scaleDots=[];
-let activeTap=null;
+// ✅ UPDATED STATE (5 POINTS)
+let scaleDots = [];
+let activeTap = null;
+let startPt = null;
+let midUpPt = null;
+let peakPt = null;
+let midDownPt = null;
+let endPt = null;
 
-let cameraDistance = 15;
-
-let animate = false;
+// animation
+let animateCurve = false;
 let animT = 0;
 
-document.getElementById('cam-depth').oninput = e=>{
- cameraDistance = e.target.value;
- document.getElementById('depth-val').innerText = cameraDistance;
-};
+const physics = new KickPhysicsEngine();
 
-document.getElementById('file-upload').onchange = e=>{
- const file = e.target.files[0];
- video.src = URL.createObjectURL(file);
- video.onloadeddata = ()=> resizeCanvas();
-};
-
-function resizeCanvas(){
- canvas.width = video.clientWidth;
- canvas.height = video.clientHeight;
- draw();
-}
-
-canvas.addEventListener('click', e=>{
- const rect = canvas.getBoundingClientRect();
- activeTap = {
-   x:(e.clientX-rect.left)/rect.width,
-   y:(e.clientY-rect.top)/rect.height
- };
- draw();
+document.getElementById('file-upload').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    video.src = URL.createObjectURL(file);
+    video.load();
+    video.onloadeddata = () => {
+        document.getElementById('upload-placeholder').style.display = 'none';
+        zoomWrapper.style.display = 'inline-flex';
+        document.getElementById('persistent-controls').style.display = 'flex';
+        isVideoLoaded = true;
+        scrubber.max = video.duration;
+        resizeCanvas();
+        resetAll();
+    };
 });
 
-document.getElementById('workflow-btn').onclick = ()=>{
- if(scaleDots.length<2){
-   scaleDots.push(activeTap);
- }
- else if(!startPt){
-   startPt = {time:video.currentTime,pos:activeTap};
- }
- else if(!midUpPt){
-   midUpPt = {time:video.currentTime,pos:activeTap};
- }
- else if(!peakPt){
-   peakPt = {time:video.currentTime,pos:activeTap};
- }
- else if(!midDownPt){
-   midDownPt = {time:video.currentTime,pos:activeTap};
- }
- else if(!endPt){
-   endPt = {time:video.currentTime,pos:activeTap};
-   calculate();
- }
- activeTap=null;
- draw();
-};
+function resizeCanvas() {
+    if (!isVideoLoaded) return;
+    const rect = video.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 
-function calculate(){
- const r = physics.calculate(
-   startPt,midUpPt,peakPt,midDownPt,endPt,
-   scaleDots,cameraDistance,canvas.width
- );
+document.getElementById('cam-depth').addEventListener('input', (e) => {
+    cameraDistance = parseFloat(e.target.value);
+    document.getElementById('depth-val').innerText = cameraDistance;
+});
 
- document.getElementById('rep').innerText =
- `Good From: ${r.maxGoodDistance.toFixed(1)} yd
-Drift: ${r.drift}
-Time: ${r.time.toFixed(2)}s
-Height: ${r.height.toFixed(1)} ft
-Angle: ${r.angle.toFixed(1)}°`;
+document.getElementById('zoom-slider').addEventListener('input', (e) => {
+    zoomLevel = parseFloat(e.target.value);
+    document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
+    zoomWrapper.style.transform = `scale(${zoomLevel})`;
+    draw();
+});
 
- drawReportCurve();
- document.getElementById('report-modal').style.display='flex';
+video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
+scrubber.addEventListener('input', (e) => { isScrubbing = true; video.currentTime = e.target.value; });
+scrubber.addEventListener('change', () => { isScrubbing = false; });
+
+function togglePlay() {
+    if (video.paused) { video.play(); btn.innerText = '⏸'; }
+    else { video.pause(); btn.innerText = '▶'; }
 }
 
-function closeReport(){
- document.getElementById('report-modal').style.display='none';
+function stepFrame(f) {
+    video.pause();
+    video.currentTime += (1/fps) * f;
 }
 
-function draw(){
+canvas.addEventListener('pointerdown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width);
+    const y = ((e.clientY - rect.top) / rect.height);
+    activeTap = {x, y};
+    updateWorkflow();
+    draw();
+});
 
- ctx.clearRect(0,0,canvas.width,canvas.height);
+function draw() {
+    if (!isVideoLoaded) return;
 
- const drawDot = (pt,color)=>{
-   if(!pt) return;
-   ctx.fillStyle=color;
-   ctx.beginPath();
-   ctx.arc(pt.pos.x*canvas.width,pt.pos.y*canvas.height,5,0,Math.PI*2);
-   ctx.fill();
- };
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
 
- drawDot(startPt,'green');
- drawDot(midUpPt,'yellow');
- drawDot(peakPt,'orange');
- drawDot(midDownPt,'purple');
- drawDot(endPt,'red');
+    const dot = (pt, color) => {
+        if (!pt) return;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(pt.pos.x * w, pt.pos.y * h, 6/zoomLevel, 0, Math.PI*2);
+        ctx.fill();
+    };
 
- // --- CURVE ---
- if(startPt && midUpPt && peakPt && midDownPt && endPt){
+    dot(startPt,'#34c759');
+    dot(midUpPt,'#ffff00');
+    dot(peakPt,'#ff9500');
+    dot(midDownPt,'#af52de');
+    dot(endPt,'#ff3b30');
 
-   ctx.strokeStyle='cyan';
-   ctx.lineWidth=2;
+    // ✅ CURVE
+    if (startPt && midUpPt && peakPt && midDownPt && endPt) {
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 2/zoomLevel;
+        ctx.beginPath();
+        ctx.moveTo(startPt.pos.x*w,startPt.pos.y*h);
 
-   ctx.beginPath();
-   ctx.moveTo(startPt.pos.x*canvas.width,startPt.pos.y*canvas.height);
+        if (animateCurve) {
+            animT += 0.02;
+            if (animT > 1) animT = 1;
 
-   if(animate){
-     animT += 0.02;
-     if(animT>1) animT=1;
+            const t = animT;
 
-     const t=animT;
+            const x =
+                Math.pow(1-t,4)*startPt.pos.x +
+                4*Math.pow(1-t,3)*t*midUpPt.pos.x +
+                6*Math.pow(1-t,2)*t*t*peakPt.pos.x +
+                4*(1-t)*t*t*t*midDownPt.pos.x +
+                t*t*t*t*endPt.pos.x;
 
-     const x =
-       Math.pow(1-t,4)*startPt.pos.x +
-       4*Math.pow(1-t,3)*t*midUpPt.pos.x +
-       6*Math.pow(1-t,2)*t*t*peakPt.pos.x +
-       4*(1-t)*t*t*t*midDownPt.pos.x +
-       t*t*t*t*endPt.pos.x;
+            const y =
+                Math.pow(1-t,4)*startPt.pos.y +
+                4*Math.pow(1-t,3)*t*midUpPt.pos.y +
+                6*Math.pow(1-t,2)*t*t*peakPt.pos.y +
+                4*(1-t)*t*t*t*midDownPt.pos.y +
+                t*t*t*t*endPt.pos.y;
 
-     const y =
-       Math.pow(1-t,4)*startPt.pos.y +
-       4*Math.pow(1-t,3)*t*midUpPt.pos.y +
-       6*Math.pow(1-t,2)*t*t*peakPt.pos.y +
-       4*(1-t)*t*t*t*midDownPt.pos.y +
-       t*t*t*t*endPt.pos.y;
+            ctx.lineTo(x*w,y*h);
 
-     ctx.lineTo(x*canvas.width,y*canvas.height);
+            if (animT < 1) requestAnimationFrame(draw);
+        } else {
+            ctx.bezierCurveTo(
+                midUpPt.pos.x*w, midUpPt.pos.y*h,
+                midDownPt.pos.x*w, midDownPt.pos.y*h,
+                endPt.pos.x*w, endPt.pos.y*h
+            );
+        }
 
-     if(animT<1) requestAnimationFrame(draw);
+        ctx.stroke();
+    }
+}
 
-   } else {
-     ctx.bezierCurveTo(
-       midUpPt.pos.x*canvas.width, midUpPt.pos.y*canvas.height,
-       midDownPt.pos.x*canvas.width, midDownPt.pos.y*canvas.height,
-       endPt.pos.x*canvas.width, endPt.pos.y*canvas.height
-     );
-   }
+function updateWorkflow() {
+    const btn = document.getElementById('btn-workflow');
 
-   ctx.stroke();
- }
+    if (scaleDots.length < 2) {
+        statusText.innerText = "Set 2 scale points";
+        btn.innerText = "CONFIRM DOT";
+        btn.onclick = () => { scaleDots.push(activeTap); activeTap=null; updateWorkflow(); draw(); };
+    }
+    else if (!startPt) {
+        statusText.innerText = "Mark IMPACT";
+        btn.innerText = "IMPACT";
+        btn.onclick = () => { startPt = {time:video.currentTime,pos:activeTap}; activeTap=null; updateWorkflow(); draw(); };
+    }
+    else if (!midUpPt) {
+        statusText.innerText = "Mark HALF UP";
+        btn.innerText = "HALF UP";
+        btn.onclick = () => { midUpPt = {time:video.currentTime,pos:activeTap}; activeTap=null; updateWorkflow(); draw(); };
+    }
+    else if (!peakPt) {
+        statusText.innerText = "Mark APEX";
+        btn.innerText = "APEX";
+        btn.onclick = () => { peakPt = {time:video.currentTime,pos:activeTap}; activeTap=null; updateWorkflow(); draw(); };
+    }
+    else if (!midDownPt) {
+        statusText.innerText = "Mark HALF DOWN";
+        btn.innerText = "HALF DOWN";
+        btn.onclick = () => { midDownPt = {time:video.currentTime,pos:activeTap}; activeTap=null; updateWorkflow(); draw(); };
+    }
+    else if (!endPt) {
+        statusText.innerText = "Mark LANDING";
+        btn.innerText = "LANDING";
+        btn.onclick = () => {
+            endPt = {time:video.currentTime,pos:activeTap};
+            activeTap=null;
+            handleCalculateAndReport();
+            updateWorkflow();
+            draw();
+        };
+    }
+    else {
+        statusText.innerText = "Done";
+        btn.innerText = "VIEW REPORT";
+        btn.onclick = () => document.getElementById('report-modal').style.display='flex';
+    }
+}
+
+function handleCalculateAndReport() {
+    const r = physics.calculate(
+        startPt, midUpPt, peakPt, midDownPt, endPt,
+        scaleDots, cameraDistance, canvas.clientWidth
+    );
+
+    document.getElementById('rep-max').innerText = `≤ ${Math.floor(r.maxGoodDistance)} yds`;
+    document.getElementById('rep-miss').innerText = r.drift;
+    document.getElementById('rep-time').innerText = `${r.time.toFixed(2)}s`;
+    document.getElementById('rep-height').innerText = `${r.height.toFixed(1)} ft`;
+    document.getElementById('rep-angle').innerText = `${r.angle.toFixed(1)}°`;
+
+    drawReportCurve();
+
+    document.getElementById('report-modal').style.display='flex';
 }
 
 function drawReportCurve(){
+    let c = document.getElementById('report-curve');
+    if(!c){
+        c = document.createElement('canvas');
+        c.id='report-curve';
+        c.style.width='100%';
+        c.style.height='150px';
+        document.querySelector('.report-content').appendChild(c);
+    }
 
- const c = document.getElementById('report-curve');
- const cx = c.getContext('2d');
+    const ctx2 = c.getContext('2d');
+    c.width = c.clientWidth;
+    c.height = c.clientHeight;
 
- c.width = c.clientWidth;
- c.height = c.clientHeight;
+    ctx2.clearRect(0,0,c.width,c.height);
 
- cx.clearRect(0,0,c.width,c.height);
+    if(!startPt) return;
 
- if(!startPt) return;
+    ctx2.strokeStyle='cyan';
+    ctx2.beginPath();
+    ctx2.moveTo(startPt.pos.x*c.width,startPt.pos.y*c.height);
 
- cx.strokeStyle='cyan';
- cx.beginPath();
+    ctx2.bezierCurveTo(
+        midUpPt.pos.x*c.width, midUpPt.pos.y*c.height,
+        midDownPt.pos.x*c.width, midDownPt.pos.y*c.height,
+        endPt.pos.x*c.width, endPt.pos.y*c.height
+    );
 
- cx.moveTo(startPt.pos.x*c.width,startPt.pos.y*c.height);
-
- cx.bezierCurveTo(
-   midUpPt.pos.x*c.width, midUpPt.pos.y*c.height,
-   midDownPt.pos.x*c.width, midDownPt.pos.y*c.height,
-   endPt.pos.x*c.width, endPt.pos.y*c.height
- );
-
- cx.stroke();
+    ctx2.stroke();
 }
 
 function toggleAnimation(){
- animate = !animate;
- animT = 0;
- draw();
+    animateCurve = !animateCurve;
+    animT = 0;
+    draw();
+}
+
+function resetAll() {
+    scaleDots = [];
+    activeTap = startPt = midUpPt = peakPt = midDownPt = endPt = null;
+    animT = 0;
+    updateWorkflow();
+    draw();
 }
 </script>
-
-</body>
-</html>
