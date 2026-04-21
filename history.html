@@ -15,7 +15,7 @@
             color: #fff;
             display: flex;
             flex-direction: column;
-            height: 100dvh; /* Prevents vertical bouncing */
+            height: 100dvh; 
             padding-top: env(safe-area-inset-top);
             padding-bottom: env(safe-area-inset-bottom);
             box-sizing: border-box;
@@ -108,74 +108,16 @@
 <body>
 
     <div class="sys-buttons">
-        <button id="btn-home" onclick="window.location.href='index.html'">&#10094; Home</button>
+        <button id="btn-home">&#10094; Home</button>
     </div>
 
     <h1>Kick History</h1>
 
     <div class="history-list" id="history-list">
-        </div>
+    </div>
 
-    <button class="btn-clear" id="btn-clear" onclick="clearHistory()" style="display: none;">Clear All History</button>
+    <button class="btn-clear" id="btn-clear" style="display: none;">Clear All History</button>
 
-    <script>
-        function loadHistory() {
-            const historyList = document.getElementById('history-list');
-            const clearBtn = document.getElementById('btn-clear');
-            
-            // Pulls the saved JSON array from your browser's local storage
-            let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
-
-            if (history.length === 0) {
-                historyList.innerHTML = '<div class="empty-state">No kicks recorded yet.<br><br>Go to Analyze Video to generate reports.</div>';
-                clearBtn.style.display = 'none';
-                return;
-            }
-
-            clearBtn.style.display = 'block';
-            historyList.innerHTML = '';
-
-            history.forEach((kick, index) => {
-                const date = new Date(kick.date);
-                const formattedDate = date.toLocaleDateString() + ' at ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                
-                const maxGood = Math.max(0, kick.maxGoodDistance);
-                const missTextClass = kick.missType.includes("Short") || kick.missType.includes("Miss") ? "text-red" : "text-green";
-
-                const card = document.createElement('div');
-                card.className = 'history-card';
-                card.innerHTML = `
-                    <div class="card-header">
-                        <span>Kick #${history.length - index}</span>
-                        <span>${formattedDate}</span>
-                    </div>
-                    <div class="card-row">
-                        <span>Max Good:</span>
-                        <span class="text-green">≤ ${Math.floor(maxGood)} yds</span>
-                    </div>
-                    <div class="card-row">
-                        <span>Past ${Math.floor(maxGood)} yds:</span>
-                        <span class="${missTextClass}">${kick.missType}</span>
-                    </div>
-                    <div class="card-row" style="font-weight: normal; font-size: 14px; margin-top: 4px; color: #d1d1d6;">
-                        <span>Time: ${kick.totalTime.toFixed(2)}s</span>
-                        <span>Height: ${kick.peakHeightFeet.toFixed(1)}ft</span>
-                        <span class="text-orange">Ang: ${kick.launchAngle.toFixed(1)}°</span>
-                    </div>
-                `;
-                historyList.appendChild(card);
-            });
-        }
-
-        function clearHistory() {
-            if(confirm("Are you sure you want to delete all kick history? This cannot be undone.")) {
-                localStorage.removeItem('kickHistory');
-                loadHistory();
-            }
-        }
-
-        // Run the load function as soon as the page opens
-        window.onload = loadHistory;
-    </script>
+    <script src="history.js"></script>
 </body>
 </html>
