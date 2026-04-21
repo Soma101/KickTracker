@@ -13,6 +13,9 @@ window.addEventListener('DOMContentLoaded', () => {
     let zoomLevel = 1.0;
     let cameraDistance = 15.0;
 
+    // ----------------------------
+    // STATE (UNCHANGED STRUCTURE)
+    // ----------------------------
     let scaleDots = [];
     let activeTap = null;
     let startPt = null;
@@ -21,10 +24,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const physics = new KickPhysicsEngine();
 
-    // -------------------------
-    // KEEP ALL YOUR EXISTING CODE BELOW EXACTLY
-    // -------------------------
-
+    // ----------------------------
+    // FILE LOAD
+    // ----------------------------
     document.getElementById('file-upload').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -45,6 +47,9 @@ window.addEventListener('DOMContentLoaded', () => {
         };
     });
 
+    // ----------------------------
+    // CANVAS SETUP (SAFE NOW)
+    // ----------------------------
     function resizeCanvas() {
         if (!isVideoLoaded) return;
 
@@ -64,51 +69,9 @@ window.addEventListener('DOMContentLoaded', () => {
         draw();
     });
 
-    // -------------------------
-    // KEEP REST OF YOUR LOGIC (UNCHANGED)
-    // -------------------------
-
-});
-    // State Machine Data
-    let scaleDots = []; 
-    let activeTap = null;
-    let startPt = null; 
-    let peakPt = null; 
-    let endPt = null;
-
-    const physics = new KickPhysicsEngine();
-
-    // 1. Loading
-    document.getElementById('file-upload').addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        video.src = URL.createObjectURL(file);
-        video.load();
-        video.onloadeddata = () => {
-            document.getElementById('upload-placeholder').style.display = 'none';
-            zoomWrapper.style.display = 'inline-flex';
-            document.getElementById('persistent-controls').style.display = 'flex';
-            isVideoLoaded = true;
-            scrubber.max = video.duration;
-            resizeCanvas();
-            resetAll();
-        };
-    });
-
-    // 2. Canvas scaling
-    function resizeCanvas() {
-        if (!isVideoLoaded) return;
-        const rect = video.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = rect.width + 'px';
-        canvas.style.height = rect.height + 'px';
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-    window.addEventListener('resize', () => { resizeCanvas(); draw(); });
-
-    // Inputs
+    // ----------------------------
+    // CAMERA + ZOOM
+    // ----------------------------
     document.getElementById('cam-depth').addEventListener('input', (e) => {
         cameraDistance = parseFloat(e.target.value);
         document.getElementById('depth-val').innerText = cameraDistance;
@@ -118,12 +81,12 @@ window.addEventListener('DOMContentLoaded', () => {
         zoomLevel = parseFloat(e.target.value);
         document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
         zoomWrapper.style.transform = `scale(${zoomLevel})`;
-        draw(); 
+        draw();
     });
 
-    // -----------------------------
-    // PLAYBACK (FIXED STEP SYSTEM)
-    // -----------------------------
+    // ----------------------------
+    // VIDEO PLAYBACK (SAFE)
+    // ----------------------------
     video.addEventListener('timeupdate', () => {
         if (!isScrubbing) scrubber.value = video.currentTime;
     });
@@ -137,7 +100,7 @@ window.addEventListener('DOMContentLoaded', () => {
         isScrubbing = false;
     });
 
-    function togglePlay() { 
+    window.togglePlay = function () {
         if (video.paused) {
             video.play();
             document.getElementById('btn-playpause').innerText = '⏸';
@@ -145,23 +108,21 @@ window.addEventListener('DOMContentLoaded', () => {
             video.pause();
             document.getElementById('btn-playpause').innerText = '▶';
         }
-    }
+    };
 
-    // ✅ FIXED FRAME STEPPING (NO FPS BUGS)
-    function stepFrame(dir) {
+    window.stepFrame = function (f) {
         video.pause();
         document.getElementById('btn-playpause').innerText = '▶';
 
-        // time-based stepping (works for ALL videos)
         video.currentTime = Math.max(
             0,
-            Math.min(video.duration, video.currentTime + (frameStep * dir))
+            Math.min(video.duration, video.currentTime + (1 / 30) * f)
         );
-    }
+    };
 
-    // -----------------------------
-    // INPUT / TAP SYSTEM
-    // -----------------------------
+    // ----------------------------
+    // INPUT TAP
+    // ----------------------------
     canvas.addEventListener('pointerdown', (e) => {
         const rect = canvas.getBoundingClientRect();
         const x = (e.clientX - rect.left) / rect.width;
@@ -172,14 +133,15 @@ window.addEventListener('DOMContentLoaded', () => {
         draw();
     });
 
-    // -----------------------------
-    // DRAW SYSTEM (UNCHANGED LOGIC)
-    // -----------------------------
+    // ----------------------------
+    // DRAW
+    // ----------------------------
     function draw() {
         if (!isVideoLoaded) return;
 
         const w = canvas.clientWidth;
         const h = canvas.clientHeight;
+
         ctx.clearRect(0, 0, w, h);
 
         const invZoom = 1 / zoomLevel;
@@ -214,51 +176,31 @@ window.addEventListener('DOMContentLoaded', () => {
         drawMarker(endPt, '#ff3b30');
     }
 
-    // -----------------------------
-    // WORKFLOW (UNCHANGED)
-    // -----------------------------
+    // ----------------------------
+    // WORKFLOW (UNCHANGED LOGIC)
+    // ----------------------------
     function updateWorkflow() {
         const btn = document.getElementById('btn-workflow');
 
         if (scaleDots.length === 0) {
-            statusText.innerText = "Step 1: Tap scale point 1 (10 yds)";
+            statusText.innerText = "Step 1: Tap scale point 1";
             btn.innerText = "CONFIRM 1ST DOT";
-            btn.onclick = () => {
-                scaleDots.push(activeTap);
-                activeTap = null;
-                updateWorkflow();
-                draw();
-            };
+            btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
         }
         else if (scaleDots.length === 1) {
-            statusText.innerText = "Step 2: Tap scale point 2 (10 yds)";
+            statusText.innerText = "Step 2: Tap scale point 2";
             btn.innerText = "CONFIRM 2ND DOT";
-            btn.onclick = () => {
-                scaleDots.push(activeTap);
-                activeTap = null;
-                updateWorkflow();
-                draw();
-            };
+            btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
         }
         else if (!startPt) {
             statusText.innerText = "Mark IMPACT";
             btn.innerText = "MARK IMPACT";
-            btn.onclick = () => {
-                startPt = { time: video.currentTime, pos: activeTap };
-                activeTap = null;
-                updateWorkflow();
-                draw();
-            };
+            btn.onclick = () => { startPt = { time: video.currentTime, pos: activeTap }; activeTap = null; updateWorkflow(); draw(); };
         }
         else if (!peakPt) {
             statusText.innerText = "Mark PEAK";
             btn.innerText = "MARK PEAK";
-            btn.onclick = () => {
-                peakPt = { time: video.currentTime, pos: activeTap };
-                activeTap = null;
-                updateWorkflow();
-                draw();
-            };
+            btn.onclick = () => { peakPt = { time: video.currentTime, pos: activeTap }; activeTap = null; updateWorkflow(); draw(); };
         }
         else if (!endPt) {
             statusText.innerText = "Mark LANDING";
@@ -267,17 +209,22 @@ window.addEventListener('DOMContentLoaded', () => {
                 endPt = { time: video.currentTime, pos: activeTap };
                 activeTap = null;
                 handleCalculateAndReport();
-                updateWorkflow();
-                draw();
             };
         }
     }
 
-    // -----------------------------
-    // REPORT (UNCHANGED)
-    // -----------------------------
+    // ----------------------------
+    // REPORT
+    // ----------------------------
     function handleCalculateAndReport() {
-        const report = physics.calculate(startPt, peakPt, endPt, scaleDots, cameraDistance, canvas.clientWidth);
+        const report = physics.calculate(
+            startPt,
+            peakPt,
+            endPt,
+            scaleDots,
+            cameraDistance,
+            canvas.clientWidth
+        );
 
         document.getElementById('rep-max').innerText = `≤ ${Math.floor(report.maxGoodDistance)} yds`;
         document.getElementById('rep-miss').innerText = report.drift;
@@ -288,7 +235,7 @@ window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('report-modal').style.display = 'flex';
     }
 
-    function resetAll() {
+    window.resetAll = function () {
         scaleDots = [];
         activeTap = startPt = peakPt = endPt = null;
 
@@ -299,5 +246,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
         updateWorkflow();
         draw();
-    }
+    };
+
+});
 </script>
