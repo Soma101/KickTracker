@@ -14,13 +14,12 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100dvh; /* Uses exact device height to prevent scrolling */
+            height: 100dvh; 
             margin: 0;
-            background-color: #000; /* Sets background to pure black */
-            color: #fff; /* Sets primary text to white */
+            background-color: #000; 
+            color: #fff; 
             text-align: center;
             
-            /* Protects content from the notch and home indicator */
             padding-top: env(safe-area-inset-top);
             padding-bottom: env(safe-area-inset-bottom);
             box-sizing: border-box;
@@ -70,10 +69,11 @@
     <h2>Optics & Physics Engine</h2>
     
     <div class="button-container">
-        <button id="btn-record" onclick="window.location.href='camera.html'">Record video</button>
-        <button id="btn-analyze" onclick="window.location.href='analyze.html'">Analyze Video</button>
-        <button id="btn-history" onclick="window.location.href='history.html'">Kick History</button>
+        <button id="btn-record">Record video</button>
+        <button id="btn-analyze">Analyze Video</button>
+        <button id="btn-history">Kick History</button>
     </div>
 
+    <script src="index.js"></script>
 </body>
 </html>
