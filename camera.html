@@ -24,7 +24,7 @@
         #camera-feed {
             width: 100%;
             flex-grow: 1;
-            min-height: 0; /* FIX: Allows video to shrink on short screens */
+            min-height: 0;
             object-fit: cover;
             background-color: #1c1c1e;
         }
@@ -98,7 +98,7 @@
         /* Review Overlay Styles */
         #review-overlay {
             position: fixed;
-            top: 0; left: 0; bottom: 0; right: 0; /* FIX: Anchors exactly to the window */
+            top: 0; left: 0; bottom: 0; right: 0;
             width: 100%; 
             background: black;
             z-index: 100;
@@ -109,14 +109,14 @@
         #review-video {
             width: 100%;
             flex-grow: 1;
-            min-height: 0; /* FIX: Allows video to shrink on short screens */
+            min-height: 0;
             object-fit: contain; 
             background: #1c1c1e;
         }
 
         .review-controls {
             height: 120px;
-            flex-shrink: 0; /* FIX: Prevents controls from being squished */
+            flex-shrink: 0;
             background: rgba(0, 0, 0, 0.8);
             display: flex;
             align-items: center;
@@ -153,7 +153,7 @@
     <video id="camera-feed" autoplay playsinline muted></video>
     
     <div class="camera-controls" id="camera-controls">
-        <button class="btn-cancel" onclick="cancelCamera()">Cancel</button>
+        <button class="btn-cancel" id="btn-cancel">Cancel</button>
         
         <div class="btn-record-wrapper" id="btn-record">
             <div class="btn-record-inner" id="record-inner-text">START</div>
@@ -165,169 +165,11 @@
     <div id="review-overlay">
         <video id="review-video" controls playsinline></video>
         <div class="review-controls">
-            <button class="btn-retake" onclick="retakeVideo()">Retake</button>
-            <button class="btn-use" onclick="useVideo()" id="btn-use-video">Use Video</button>
+            <button class="btn-retake" id="btn-retake">Retake</button>
+            <button class="btn-use" id="btn-use-video">Use Video</button>
         </div>
     </div>
 
-    <script>
-        const videoElement = document.getElementById('camera-feed');
-        const recordBtn = document.getElementById('btn-record');
-        const recordInnerText = document.getElementById('record-inner-text');
-        const statusText = document.getElementById('status-text');
-        const cameraControls = document.getElementById('camera-controls');
-        
-        const reviewOverlay = document.getElementById('review-overlay');
-        const reviewVideo = document.getElementById('review-video');
-        const useVideoBtn = document.getElementById('btn-use-video');
-
-        let mediaStream = null;
-        let mediaRecorder = null;
-        let recordedChunks = [];
-        let isRecording = false;
-        let timerInterval = null;
-        let secondsRecorded = 0;
-        let finalVideoBlob = null;
-
-        async function setupCamera() {
-            try {
-                // 'ideal' allows fallback to a laptop webcam if a rear phone camera doesn't exist
-                mediaStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-                    audio: false 
-                });
-                videoElement.srcObject = mediaStream;
-                
-                mediaRecorder = new MediaRecorder(mediaStream);
-                
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data && event.data.size > 0) {
-                        recordedChunks.push(event.data);
-                    }
-                };
-
-                // Trigger the review popup when recording stops
-                mediaRecorder.onstop = showReviewOverlay;
-
-            } catch (error) {
-                console.error("Camera access error:", error);
-                alert("Please enable camera permissions to record kicks.");
-            }
-        }
-
-        recordBtn.addEventListener('click', () => {
-            if (!isRecording) {
-                // START RECORDING
-                recordedChunks = [];
-                mediaRecorder.start(500); // 500ms chunks for iOS stability
-                isRecording = true;
-                
-                // UI Updates
-                recordBtn.classList.add('is-recording');
-                recordInnerText.innerText = "STOP";
-                statusText.style.display = 'block';
-                statusText.innerHTML = 'Recording... <span id="timer">00:00</span>';
-                const dynamicTimer = document.getElementById('timer');
-                
-                secondsRecorded = 0;
-                timerInterval = setInterval(() => {
-                    secondsRecorded++;
-                    let mins = String(Math.floor(secondsRecorded / 60)).padStart(2, '0');
-                    let secs = String(secondsRecorded % 60).padStart(2, '0');
-                    dynamicTimer.innerText = `${mins}:${secs}`;
-                }, 1000);
-
-            } else {
-                // STOP RECORDING
-                mediaRecorder.stop();
-                isRecording = false;
-                
-                // UI Updates
-                recordBtn.classList.remove('is-recording');
-                recordInnerText.innerText = "START";
-                clearInterval(timerInterval);
-                statusText.innerText = "Processing...";
-            }
-        });
-
-        // Show the popup and load the video for review
-        function showReviewOverlay() {
-            const finalType = recordedChunks[0]?.type || 'video/mp4';
-            finalVideoBlob = new Blob(recordedChunks, { type: finalType });
-            
-            reviewVideo.src = URL.createObjectURL(finalVideoBlob);
-            
-            // Hide camera UI, show review UI
-            cameraControls.style.display = 'none';
-            statusText.style.display = 'none';
-            reviewOverlay.style.display = 'flex';
-            
-            // Auto-play the preview
-            reviewVideo.play();
-        }
-
-        // Retake button logic
-        function retakeVideo() {
-            // Stop preview
-            reviewVideo.pause();
-            reviewVideo.src = "";
-            
-            // Clear memory
-            recordedChunks = [];
-            finalVideoBlob = null;
-            
-            // Hide review UI, show camera UI
-            reviewOverlay.style.display = 'none';
-            cameraControls.style.display = 'flex';
-        }
-
-        // Use Video button logic (Saves and navigates to Analyzer)
-        function useVideo() {
-            useVideoBtn.innerText = "Saving...";
-            useVideoBtn.disabled = true;
-
-            const request = indexedDB.open('KickTrackerDB', 1);
-
-            request.onupgradeneeded = (e) => {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains('videos')) {
-                    db.createObjectStore('videos');
-                }
-            };
-
-            request.onsuccess = (e) => {
-                const db = e.target.result;
-                const transaction = db.transaction('videos', 'readwrite');
-                const store = transaction.objectStore('videos');
-                
-                store.put(finalVideoBlob, 'latest_kick');
-                
-                transaction.oncomplete = () => {
-                    shutdownCamera();
-                    window.location.href = 'analyze.html?load=latest';
-                };
-            };
-
-            request.onerror = (e) => {
-                console.error("Failed to save video to database:", e);
-                alert("Failed to save video. Please try again.");
-                useVideoBtn.innerText = "Use Video";
-                useVideoBtn.disabled = false;
-            };
-        }
-
-        function cancelCamera() {
-            shutdownCamera();
-            window.location.href = 'index.html';
-        }
-
-        function shutdownCamera() {
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
-            }
-        }
-
-        setupCamera();
-    </script>
+    <script src="camera.js"></script>
 </body>
 </html>
