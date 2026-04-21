@@ -1,33 +1,73 @@
-<script src="analyze.js" defer></script>
+window.addEventListener('DOMContentLoaded', () => {
+
     const video = document.getElementById('video-player');
     const canvas = document.getElementById('overlay');
     const ctx = canvas.getContext('2d');
     const zoomWrapper = document.getElementById('zoom-wrapper');
     const scrubber = document.getElementById('scrubber');
     const statusText = document.getElementById('status-text');
-    
+
     let isVideoLoaded = false;
     let isScrubbing = false;
     let zoomLevel = 1.0;
     let cameraDistance = 15.0;
 
-    // -----------------------------
-    // FPS / TIMING (FIXED VERSION)
-    // -----------------------------
-    let videoFps = 30;
-    let frameStep = 1 / 30;
+    let scaleDots = [];
+    let activeTap = null;
+    let startPt = null;
+    let peakPt = null;
+    let endPt = null;
 
-    video.addEventListener('loadedmetadata', () => {
-        // Most reliable practical fallback
-        videoFps = 30;
+    const physics = new KickPhysicsEngine();
 
-        // Try to improve estimate using real playback stats if available
-        const estimate = video.duration ? (video.videoHeight ? 30 : 30) : 30;
+    // -------------------------
+    // KEEP ALL YOUR EXISTING CODE BELOW EXACTLY
+    // -------------------------
 
-        videoFps = estimate;
-        frameStep = 1 / videoFps;
+    document.getElementById('file-upload').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        video.src = URL.createObjectURL(file);
+        video.load();
+
+        video.onloadeddata = () => {
+            document.getElementById('upload-placeholder').style.display = 'none';
+            zoomWrapper.style.display = 'inline-flex';
+            document.getElementById('persistent-controls').style.display = 'flex';
+
+            isVideoLoaded = true;
+            scrubber.max = video.duration;
+
+            resizeCanvas();
+            resetAll();
+        };
     });
 
+    function resizeCanvas() {
+        if (!isVideoLoaded) return;
+
+        const rect = video.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+        draw();
+    });
+
+    // -------------------------
+    // KEEP REST OF YOUR LOGIC (UNCHANGED)
+    // -------------------------
+
+});
     // State Machine Data
     let scaleDots = []; 
     let activeTap = null;
