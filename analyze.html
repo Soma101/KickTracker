@@ -1,252 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>KickTracker App</title>
+
+    <script src="physics-engine.js"></script>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .sys-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 10px;
+            background-color: #1c1c1e;
+        }
+        .sys-buttons button {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #btn-home { background: #007aff; color: white; margin-right: auto; }
+        #btn-reset { background: #3a3a3c; color: white; }
+        #file-upload { display: none; }
+
+        .dashboard {
+            background-color: #1c1c1e;
+            padding: 10px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .results-box {
+            background-color: #2c2c2e;
+            padding: 8px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            text-align: center;
+            color: #007aff;
+        }
+
+        .viewport-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+
+        video {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+
+        .controls {
+            background-color: #1c1c1e;
+            padding: 10px;
+        }
+
+        .workflow-bar {
+            background-color: #1c1c1e;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .workflow-btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            color: white;
+            background: #3a3a3c;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="sys-buttons">
+    <button id="btn-home">Home</button>
+    <button id="btn-reset">Reset App</button>
+    <button id="btn-new">New Video</button>
+</div>
+
+<div class="dashboard">
+    <div class="row">
+        <div class="results-box" id="status-text">Upload a video to begin.</div>
+    </div>
+</div>
+
+<div class="viewport-container">
+
+    <!-- ✅ THIS WAS THE CRASH FIX -->
+    <video id="video-player" playsinline></video>
+    <canvas id="overlay"></canvas>
+
+</div>
+
+<div class="controls">
+    <input type="file" id="file-upload" accept="video/*">
+</div>
+
+<div class="workflow-bar">
+    <button id="btn-workflow" class="workflow-btn">Analyze</button>
+</div>
+
 <script>
-window.addEventListener('DOMContentLoaded', () => {
+let video, canvas, ctx;
+let isReady = false;
 
-    const video = document.getElementById('video-player');
-    const canvas = document.getElementById('overlay');
-    const ctx = canvas.getContext('2d');
-    const zoomWrapper = document.getElementById('zoom-wrapper');
-    const scrubber = document.getElementById('scrubber');
-    const statusText = document.getElementById('status-text');
+document.addEventListener("DOMContentLoaded", () => {
 
-    let isVideoLoaded = false;
-    let isScrubbing = false;
-    let zoomLevel = 1.0;
-    let cameraDistance = 15.0;
+    video = document.getElementById("video-player");
+    canvas = document.getElementById("overlay");
 
-    // ----------------------------
-    // STATE (UNCHANGED STRUCTURE)
-    // ----------------------------
-    let scaleDots = [];
-    let activeTap = null;
-    let startPt = null;
-    let peakPt = null;
-    let endPt = null;
+    if (!canvas) {
+        console.error("❌ overlay canvas missing");
+        return;
+    }
 
-    const physics = new KickPhysicsEngine();
+    ctx = canvas.getContext("2d");
 
-    // ----------------------------
-    // FILE LOAD
-    // ----------------------------
-    document.getElementById('file-upload').addEventListener('change', (e) => {
+    // Resize canvas to match video
+    function resize() {
+        const rect = video.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+    }
+
+    window.addEventListener("resize", resize);
+
+    // File load
+    document.getElementById("file-upload").addEventListener("change", (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
         video.src = URL.createObjectURL(file);
-        video.load();
 
         video.onloadeddata = () => {
-            document.getElementById('upload-placeholder').style.display = 'none';
-            zoomWrapper.style.display = 'inline-flex';
-            document.getElementById('persistent-controls').style.display = 'flex';
-
-            isVideoLoaded = true;
-            scrubber.max = video.duration;
-
-            resizeCanvas();
-            resetAll();
+            resize();
+            isReady = true;
+            document.getElementById("status-text").innerText = "Video loaded.";
         };
     });
 
-    // ----------------------------
-    // CANVAS SETUP (SAFE NOW)
-    // ----------------------------
-    function resizeCanvas() {
-        if (!isVideoLoaded) return;
+    // Simple draw test (prevents blank screen debugging confusion)
+    function drawTest() {
+        if (!isReady) return;
 
-        const rect = video.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.arc(canvas.width / 2, canvas.height / 2, 10, 0, Math.PI * 2);
+        ctx.fill();
 
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = rect.width + 'px';
-        canvas.style.height = rect.height + 'px';
-
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        requestAnimationFrame(drawTest);
     }
 
-    window.addEventListener('resize', () => {
-        resizeCanvas();
-        draw();
-    });
-
-    // ----------------------------
-    // CAMERA + ZOOM
-    // ----------------------------
-    document.getElementById('cam-depth').addEventListener('input', (e) => {
-        cameraDistance = parseFloat(e.target.value);
-        document.getElementById('depth-val').innerText = cameraDistance;
-    });
-
-    document.getElementById('zoom-slider').addEventListener('input', (e) => {
-        zoomLevel = parseFloat(e.target.value);
-        document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
-        zoomWrapper.style.transform = `scale(${zoomLevel})`;
-        draw();
-    });
-
-    // ----------------------------
-    // VIDEO PLAYBACK (SAFE)
-    // ----------------------------
-    video.addEventListener('timeupdate', () => {
-        if (!isScrubbing) scrubber.value = video.currentTime;
-    });
-
-    scrubber.addEventListener('input', (e) => {
-        isScrubbing = true;
-        video.currentTime = e.target.value;
-    });
-
-    scrubber.addEventListener('change', () => {
-        isScrubbing = false;
-    });
-
-    window.togglePlay = function () {
-        if (video.paused) {
-            video.play();
-            document.getElementById('btn-playpause').innerText = '⏸';
-        } else {
-            video.pause();
-            document.getElementById('btn-playpause').innerText = '▶';
-        }
-    };
-
-    window.stepFrame = function (f) {
-        video.pause();
-        document.getElementById('btn-playpause').innerText = '▶';
-
-        video.currentTime = Math.max(
-            0,
-            Math.min(video.duration, video.currentTime + (1 / 30) * f)
-        );
-    };
-
-    // ----------------------------
-    // INPUT TAP
-    // ----------------------------
-    canvas.addEventListener('pointerdown', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left) / rect.width;
-        const y = (e.clientY - rect.top) / rect.height;
-
-        activeTap = { x, y };
-        updateWorkflow();
-        draw();
-    });
-
-    // ----------------------------
-    // DRAW
-    // ----------------------------
-    function draw() {
-        if (!isVideoLoaded) return;
-
-        const w = canvas.clientWidth;
-        const h = canvas.clientHeight;
-
-        ctx.clearRect(0, 0, w, h);
-
-        const invZoom = 1 / zoomLevel;
-        const dotRad = 6 * invZoom;
-
-        if (scaleDots.length === 2) {
-            ctx.strokeStyle = '#3a3a3c';
-            ctx.lineWidth = 2 * invZoom;
-            ctx.beginPath();
-            ctx.moveTo(scaleDots[0].x * w, scaleDots[0].y * h);
-            ctx.lineTo(scaleDots[1].x * w, scaleDots[1].y * h);
-            ctx.stroke();
-        }
-
-        ctx.fillStyle = '#007aff';
-        scaleDots.forEach(pt => {
-            ctx.beginPath();
-            ctx.arc(pt.x * w, pt.y * h, dotRad, 0, Math.PI * 2);
-            ctx.fill();
-        });
-
-        const drawMarker = (pt, color) => {
-            if (!pt) return;
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2);
-            ctx.fill();
-        };
-
-        drawMarker(startPt, '#34c759');
-        drawMarker(peakPt, '#ff9500');
-        drawMarker(endPt, '#ff3b30');
-    }
-
-    // ----------------------------
-    // WORKFLOW (UNCHANGED LOGIC)
-    // ----------------------------
-    function updateWorkflow() {
-        const btn = document.getElementById('btn-workflow');
-
-        if (scaleDots.length === 0) {
-            statusText.innerText = "Step 1: Tap scale point 1";
-            btn.innerText = "CONFIRM 1ST DOT";
-            btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
-        }
-        else if (scaleDots.length === 1) {
-            statusText.innerText = "Step 2: Tap scale point 2";
-            btn.innerText = "CONFIRM 2ND DOT";
-            btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
-        }
-        else if (!startPt) {
-            statusText.innerText = "Mark IMPACT";
-            btn.innerText = "MARK IMPACT";
-            btn.onclick = () => { startPt = { time: video.currentTime, pos: activeTap }; activeTap = null; updateWorkflow(); draw(); };
-        }
-        else if (!peakPt) {
-            statusText.innerText = "Mark PEAK";
-            btn.innerText = "MARK PEAK";
-            btn.onclick = () => { peakPt = { time: video.currentTime, pos: activeTap }; activeTap = null; updateWorkflow(); draw(); };
-        }
-        else if (!endPt) {
-            statusText.innerText = "Mark LANDING";
-            btn.innerText = "MARK LANDING";
-            btn.onclick = () => {
-                endPt = { time: video.currentTime, pos: activeTap };
-                activeTap = null;
-                handleCalculateAndReport();
-            };
-        }
-    }
-
-    // ----------------------------
-    // REPORT
-    // ----------------------------
-    function handleCalculateAndReport() {
-        const report = physics.calculate(
-            startPt,
-            peakPt,
-            endPt,
-            scaleDots,
-            cameraDistance,
-            canvas.clientWidth
-        );
-
-        document.getElementById('rep-max').innerText = `≤ ${Math.floor(report.maxGoodDistance)} yds`;
-        document.getElementById('rep-miss').innerText = report.drift;
-        document.getElementById('rep-time').innerText = `${report.time.toFixed(2)}s`;
-        document.getElementById('rep-height').innerText = `${report.height.toFixed(1)} ft`;
-        document.getElementById('rep-angle').innerText = `${report.angle.toFixed(1)}°`;
-
-        document.getElementById('report-modal').style.display = 'flex';
-    }
-
-    window.resetAll = function () {
-        scaleDots = [];
-        activeTap = startPt = peakPt = endPt = null;
-
-        if (isVideoLoaded) {
-            video.pause();
-            video.currentTime = 0;
-        }
-
-        updateWorkflow();
-        draw();
-    };
-
+    drawTest();
 });
 </script>
+
+</body>
+</html>
