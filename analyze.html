@@ -201,22 +201,32 @@ function updateWorkflow() {
 }
 
 function handleCalculateAndReport() {
+    // Pass all 8 arguments exactly as the new engine expects them
     const r = physics.calculate(
-        startPt, midUpPt, peakPt, midDownPt, endPt,
-        scaleDots, cameraDistance, canvas.clientWidth
+        startPt, 
+        midUpPt, 
+        peakPt, 
+        midDownPt, 
+        endPt,
+        scaleDots, 
+        cameraDistance, 
+        canvas.clientWidth
     );
 
+    // Update the Actuarial Report UI
     document.getElementById('rep-max').innerText = `≤ ${Math.floor(r.maxGoodDistance)} yds`;
     document.getElementById('rep-miss').innerText = r.drift;
     document.getElementById('rep-time').innerText = `${r.time.toFixed(2)}s`;
     document.getElementById('rep-height').innerText = `${r.height.toFixed(1)} ft`;
     document.getElementById('rep-angle').innerText = `${r.angle.toFixed(1)}°`;
 
+    // Draw the visual trajectory curve
     drawReportCurve();
 
-    document.getElementById('report-modal').style.display='flex';
+    // Show the modal
+    document.getElementById('report-modal').style.display = 'flex';
 }
-
+    
 function drawReportCurve(){
     let c = document.getElementById('report-curve');
     if(!c){
