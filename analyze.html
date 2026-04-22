@@ -226,7 +226,7 @@
             <input type="range" id="cam-depth" min="5" max="50" step="1" value="15">
         </div>
         <div class="results-box" id="status-text">Upload a video to begin.</div>
-        <!-- 7 steps: scale1, scale2, impact, halfUp, apex, halfDown, landing -->
+        <!-- 9 steps: scale1, scale2, ballTop, ballBottom, impact, halfUp, apex, halfDown, landing -->
         <div class="progress-bar" id="progress-bar">
             <div class="progress-dot" id="dot-0"></div>
             <div class="progress-dot" id="dot-1"></div>
@@ -235,6 +235,8 @@
             <div class="progress-dot" id="dot-4"></div>
             <div class="progress-dot" id="dot-5"></div>
             <div class="progress-dot" id="dot-6"></div>
+            <div class="progress-dot" id="dot-7"></div>
+            <div class="progress-dot" id="dot-8"></div>
         </div>
     </div>
 
@@ -276,6 +278,7 @@
             <h2 style="text-align:center; margin-top:0;">Actuarial Report</h2>
             <div class="report-section">
                 <div class="report-header">Scoring Projection</div>
+                <div class="report-row"><span>Kick Distance</span> <span class="text-green" id="rep-dist">-- yds</span></div>
                 <div class="report-row"><span>Good From</span> <span class="text-green" id="rep-max">≤ 0 yds</span></div>
                 <div class="report-row"><span>Drift Profile</span> <span id="rep-miss" style="font-weight:bold;">--</span></div>
             </div>
@@ -304,14 +307,16 @@
         let zoomLevel = 1.0;
         let cameraDistance = 15.0;
 
-        // State — 5 tracking points + 2 scale dots
+        // State — 5 tracking points + 2 scale dots + 2 ball tee taps
         let scaleDots = [];
         let activeTap = null;
-        let startPt   = null;   // impact
-        let halfUpPt  = null;   // halfway up
-        let peakPt    = null;   // apex
-        let halfDownPt = null;  // halfway down
-        let endPt     = null;   // landing
+        let ballTeeDots = [];       // [topTap, bottomTap] normalized y values
+        let ballTeePixelHeight = 0; // |top.y - bottom.y| * canvasHeight in pixels
+        let startPt    = null;      // impact
+        let halfUpPt   = null;      // halfway up
+        let peakPt     = null;      // apex
+        let halfDownPt = null;      // halfway down
+        let endPt      = null;      // landing
 
         // centerX: normalized X baseline from impact tap (0–1).
         // All trajectory point X values are stored relative to this.
@@ -319,42 +324,53 @@
 
         const physics = new KickPhysicsEngine();
 
-        // ─── Workflow steps descriptor ───────────────────────────────────────────
-        // Each step: { label, color, status, confirm }
-        // confirm() is called when the user presses the workflow button.
-        // Must return true to advance.
+        // ─── Workflow steps descriptor (9 steps) ────────────────────────────────
         function getSteps() {
             return [
                 {
                     id: 'scale1',
-                    status: "Step 1 of 7: Tap to set 1st scale reference dot (10 yds apart)",
+                    status: "Step 1 of 9: Tap to set 1st scale reference dot (10 yds apart)",
                     label: "CONFIRM 1ST DOT",
                     color: '#007aff',
                     ready: () => activeTap !== null,
-                    confirm: () => {
-                        scaleDots.push({...activeTap});
-                        activeTap = null;
-                    }
+                    confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
                 },
                 {
                     id: 'scale2',
-                    status: "Step 2 of 7: Tap to set 2nd scale reference dot",
+                    status: "Step 2 of 9: Tap to set 2nd scale reference dot",
                     label: "CONFIRM 2ND DOT",
                     color: '#007aff',
                     ready: () => activeTap !== null,
+                    confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
+                },
+                {
+                    id: 'ballTop',
+                    status: "Step 3 of 9: Pause on a STILL frame before the kick. Tap the TOP of the ball.",
+                    label: "CONFIRM BALL TOP",
+                    color: '#ff9500',
+                    ready: () => activeTap !== null,
+                    confirm: () => { ballTeeDots[0] = {...activeTap}; activeTap = null; }
+                },
+                {
+                    id: 'ballBottom',
+                    status: "Step 4 of 9: Tap the BOTTOM of the ball (same still frame).",
+                    label: "CONFIRM BALL BOTTOM",
+                    color: '#ff9500',
+                    ready: () => activeTap !== null,
                     confirm: () => {
-                        scaleDots.push({...activeTap});
+                        ballTeeDots[1] = {...activeTap};
+                        // |top.y - bottom.y| in normalized coords × canvas height = pixel height
+                        ballTeePixelHeight = Math.abs(ballTeeDots[0].y - ballTeeDots[1].y) * canvas.clientHeight;
                         activeTap = null;
                     }
                 },
                 {
                     id: 'impact',
-                    status: "Step 3 of 7: Scrub to IMPACT frame. Tap the ball.",
+                    status: "Step 5 of 9: Scrub to IMPACT frame. Tap the ball.",
                     label: "MARK IMPACT",
                     color: '#34c759',
                     ready: () => activeTap !== null,
                     confirm: () => {
-                        // Store raw position and record centerX baseline
                         centerX = activeTap.x;
                         startPt = { time: video.currentTime, pos: { x: activeTap.x, y: activeTap.y } };
                         activeTap = null;
@@ -362,40 +378,31 @@
                 },
                 {
                     id: 'halfUp',
-                    status: "Step 4 of 7: Scrub to HALF-WAY UP frame. Tap the ball.",
+                    status: "Step 6 of 9: Scrub to HALF-WAY UP frame. Tap the ball.",
                     label: "MARK HALF-UP",
                     color: '#5ac8fa',
                     ready: () => activeTap !== null && startPt !== null && video.currentTime > startPt.time,
-                    confirm: () => {
-                        halfUpPt = { time: video.currentTime, pos: normalizedPos(activeTap) };
-                        activeTap = null;
-                    }
+                    confirm: () => { halfUpPt = { time: video.currentTime, pos: normalizedPos(activeTap) }; activeTap = null; }
                 },
                 {
                     id: 'apex',
-                    status: "Step 5 of 7: Scrub to APEX (highest point). Tap the ball.",
+                    status: "Step 7 of 9: Scrub to APEX (highest point). Tap the ball.",
                     label: "MARK APEX",
                     color: '#ff9500',
                     ready: () => activeTap !== null && halfUpPt !== null && video.currentTime > halfUpPt.time,
-                    confirm: () => {
-                        peakPt = { time: video.currentTime, pos: normalizedPos(activeTap) };
-                        activeTap = null;
-                    }
+                    confirm: () => { peakPt = { time: video.currentTime, pos: normalizedPos(activeTap) }; activeTap = null; }
                 },
                 {
                     id: 'halfDown',
-                    status: "Step 6 of 7: Scrub to HALF-WAY DOWN frame. Tap the ball.",
+                    status: "Step 8 of 9: Scrub to HALF-WAY DOWN frame. Tap the ball.",
                     label: "MARK HALF-DOWN",
                     color: '#bf5af2',
                     ready: () => activeTap !== null && peakPt !== null && video.currentTime > peakPt.time,
-                    confirm: () => {
-                        halfDownPt = { time: video.currentTime, pos: normalizedPos(activeTap) };
-                        activeTap = null;
-                    }
+                    confirm: () => { halfDownPt = { time: video.currentTime, pos: normalizedPos(activeTap) }; activeTap = null; }
                 },
                 {
                     id: 'landing',
-                    status: "Step 7 of 7: Scrub to LANDING frame. Tap the ball.",
+                    status: "Step 9 of 9: Scrub to LANDING frame. Tap the ball.",
                     label: "MARK LANDING",
                     color: '#ff3b30',
                     ready: () => activeTap !== null && halfDownPt !== null && video.currentTime > halfDownPt.time,
@@ -409,24 +416,25 @@
         }
 
         // Returns normalized pos: X relative to centerX baseline, Y unchanged.
-        // impact itself stores raw X (centerX); subsequent points store offset.
         function normalizedPos(tap) {
             return {
-                x: tap.x - centerX + 0.5,  // shift so center = 0.5 (neutral)
+                x: tap.x - centerX + 0.5,
                 y: tap.y
             };
         }
 
-        // Current step index (0–6), or 7 when all done
+        // Current step index (0–8), or 9 when all done
         function currentStepIndex() {
-            if (scaleDots.length === 0) return 0;
-            if (scaleDots.length === 1) return 1;
-            if (!startPt)    return 2;
-            if (!halfUpPt)   return 3;
-            if (!peakPt)     return 4;
-            if (!halfDownPt) return 5;
-            if (!endPt)      return 6;
-            return 7; // complete
+            if (scaleDots.length === 0)    return 0;
+            if (scaleDots.length === 1)    return 1;
+            if (ballTeeDots.length === 0)  return 2;
+            if (ballTeeDots.length === 1)  return 3;
+            if (!startPt)                  return 4;
+            if (!halfUpPt)                 return 5;
+            if (!peakPt)                   return 6;
+            if (!halfDownPt)               return 7;
+            if (!endPt)                    return 8;
+            return 9; // complete
         }
 
         // ─── File Loading ─────────────────────────────────────────────────────────
@@ -571,7 +579,24 @@
                 }
             };
 
-            drawMarker(startPt,    '#34c759', 'Impact',   false);
+            // Ball tee dots (orange, top + bottom)
+            ctx.fillStyle = '#ff9500';
+            ballTeeDots.forEach((pt, i) => {
+                ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, dotRad, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#ff9500';
+                ctx.font = `bold ${10 * invZoom}px -apple-system, sans-serif`;
+                ctx.fillText(i === 0 ? 'Ball Top' : 'Ball Bot', pt.x * w + dotRad + 2 * invZoom, pt.y * h + 4 * invZoom);
+            });
+            if (ballTeeDots.length === 2) {
+                ctx.strokeStyle = '#ff9500';
+                ctx.lineWidth = 1.5 * invZoom;
+                ctx.beginPath();
+                ctx.moveTo(ballTeeDots[0].x * w, ballTeeDots[0].y * h);
+                ctx.lineTo(ballTeeDots[1].x * w, ballTeeDots[1].y * h);
+                ctx.stroke();
+            }
+
+            drawMarker(startPt,    '#34c759', 'Impact',  false);
             drawMarker(halfUpPt,   '#5ac8fa', '½↑',       true);
             drawMarker(peakPt,     '#ff9500', 'Apex',     true);
             drawMarker(halfDownPt, '#bf5af2', '½↓',       true);
@@ -603,7 +628,7 @@
 
         // ─── Progress Dots ────────────────────────────────────────────────────────
         function updateProgressDots(stepIdx) {
-            for (let i = 0; i < 7; i++) {
+            for (let i = 0; i < 9; i++) {
                 const dot = document.getElementById(`dot-${i}`);
                 if (i < stepIdx)       dot.className = 'progress-dot done';
                 else if (i === stepIdx) dot.className = 'progress-dot active';
@@ -624,7 +649,7 @@
             // Enable undo if at least one point confirmed beyond step 0
             undoBtn.disabled = (stepIdx === 0);
 
-            if (stepIdx === 7) {
+            if (stepIdx === 9) {
                 // All points placed
                 statusText.innerText = "Analysis complete.";
                 btn.innerText = "VIEW REPORT";
@@ -650,13 +675,13 @@
         // ─── Undo Last Point ─────────────────────────────────────────────────────
         function undoLast() {
             const stepIdx = currentStepIndex();
-            // stepIdx tells us what we're ABOUT to do; undo means clearing what was
-            // last done (stepIdx - 1).
-            if      (stepIdx >= 7) { endPt      = null; }
-            else if (stepIdx === 6) { halfDownPt = null; }
-            else if (stepIdx === 5) { peakPt     = null; }
-            else if (stepIdx === 4) { halfUpPt   = null; }
-            else if (stepIdx === 3) { startPt    = null; centerX = null; }
+            if      (stepIdx >= 9) { endPt       = null; }
+            else if (stepIdx === 8) { halfDownPt  = null; }
+            else if (stepIdx === 7) { peakPt      = null; }
+            else if (stepIdx === 6) { halfUpPt    = null; }
+            else if (stepIdx === 5) { startPt     = null; centerX = null; }
+            else if (stepIdx === 4) { ballTeeDots.pop(); ballTeePixelHeight = 0; }
+            else if (stepIdx === 3) { ballTeeDots.pop(); }
             else if (stepIdx === 2) { scaleDots.pop(); }
             else if (stepIdx === 1) { scaleDots.pop(); }
             activeTap = null;
@@ -664,16 +689,12 @@
             draw();
         }
 
-        // ─── Calculate & Report ───────────────────────────────────────────────────
         function handleCalculateAndReport() {
-            // Pass 5-point data to physics engine.
-            // startPt.pos.x is raw (= centerX); others are normalized (offset from center).
-            // Physics engine receives startPt with x=centerX, and all others with x relative
-            // to 0.5 baseline so engine can measure real lateral offset.
             const activeReport = physics.calculate(
                 startPt, peakPt, endPt,
                 scaleDots, cameraDistance, canvas.clientWidth,
-                halfUpPt, halfDownPt   // new extended args
+                halfUpPt, halfDownPt,
+                ballTeePixelHeight, canvas.clientHeight
             );
 
             let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
@@ -681,11 +702,12 @@
             if (history.length > 100) history.pop();
             localStorage.setItem('kickHistory', JSON.stringify(history));
 
-            document.getElementById('rep-max').innerText   = `≤ ${Math.floor(activeReport.maxGoodDistance)} yds`;
-            document.getElementById('rep-miss').innerText  = activeReport.drift;
-            document.getElementById('rep-time').innerText  = `${activeReport.time.toFixed(2)}s`;
-            document.getElementById('rep-height').innerText = `${activeReport.height.toFixed(1)} ft`;
-            document.getElementById('rep-angle').innerText = `${activeReport.angle.toFixed(1)}°`;
+            document.getElementById('rep-max').innerText      = `≤ ${Math.floor(activeReport.maxGoodDistance)} yds`;
+            document.getElementById('rep-miss').innerText     = activeReport.drift;
+            document.getElementById('rep-dist').innerText     = `${activeReport.kickDistance.toFixed(1)} yds`;
+            document.getElementById('rep-time').innerText     = `${activeReport.time.toFixed(2)}s`;
+            document.getElementById('rep-height').innerText   = `${activeReport.height.toFixed(1)} ft`;
+            document.getElementById('rep-angle').innerText    = `${activeReport.angle.toFixed(1)}°`;
 
             document.getElementById('report-modal').style.display = 'flex';
         }
@@ -693,6 +715,8 @@
         // ─── Reset ────────────────────────────────────────────────────────────────
         function resetAll() {
             scaleDots = [];
+            ballTeeDots = [];
+            ballTeePixelHeight = 0;
             activeTap = startPt = halfUpPt = peakPt = halfDownPt = endPt = null;
             centerX = null;
             zoomLevel = 1.0;
