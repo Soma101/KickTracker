@@ -59,7 +59,7 @@
             color: #007aff;
         }
 
-        /* Viewport fixes for Laptop + Mobile */
+        /* Viewport */
         .viewport-container {
             flex: 1;
             min-height: 0; 
@@ -128,14 +128,16 @@
             border-radius: 6px;
         }
 
+        /* Workflow bar — confirm + undo side by side */
         .workflow-bar {
             background-color: #1c1c1e;
             padding: 15px;
             display: flex;
+            gap: 10px;
             justify-content: center;
         }
         .workflow-btn {
-            width: 100%;
+            flex: 1;
             padding: 16px;
             font-size: 18px;
             font-weight: bold;
@@ -145,6 +147,38 @@
             color: white;
             background: #3a3a3c;
         }
+        #btn-undo {
+            flex: 0 0 auto;
+            padding: 16px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            color: white;
+            background: #3a3a3c;
+        }
+        #btn-undo:disabled {
+            opacity: 0.3;
+            cursor: default;
+        }
+
+        /* Progress dots */
+        .progress-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 0 0 0;
+        }
+        .progress-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: #3a3a3c;
+            transition: background 0.2s;
+        }
+        .progress-dot.done   { background: #34c759; }
+        .progress-dot.active { background: #ffff00; }
 
         /* Actuarial Report */
         #report-modal {
@@ -192,6 +226,16 @@
             <input type="range" id="cam-depth" min="5" max="50" step="1" value="15">
         </div>
         <div class="results-box" id="status-text">Upload a video to begin.</div>
+        <!-- 7 steps: scale1, scale2, impact, halfUp, apex, halfDown, landing -->
+        <div class="progress-bar" id="progress-bar">
+            <div class="progress-dot" id="dot-0"></div>
+            <div class="progress-dot" id="dot-1"></div>
+            <div class="progress-dot" id="dot-2"></div>
+            <div class="progress-dot" id="dot-3"></div>
+            <div class="progress-dot" id="dot-4"></div>
+            <div class="progress-dot" id="dot-5"></div>
+            <div class="progress-dot" id="dot-6"></div>
+        </div>
     </div>
 
     <div class="viewport-container">
@@ -223,6 +267,7 @@
     </div>
 
     <div class="workflow-bar">
+        <button id="btn-undo" onclick="undoLast()" disabled>↩ Undo</button>
         <button id="btn-workflow" class="workflow-btn" disabled>Awaiting Video...</button>
     </div>
 
@@ -245,7 +290,7 @@
     </div>
 
     <script>
-        const fps = 30; // standard approx for frame stepping
+        const fps = 30;
         
         const video = document.getElementById('video-player');
         const canvas = document.getElementById('overlay');
@@ -259,17 +304,132 @@
         let zoomLevel = 1.0;
         let cameraDistance = 15.0;
 
-        // State Machine Data
-        let scaleDots = []; 
+        // State — 5 tracking points + 2 scale dots
+        let scaleDots = [];
         let activeTap = null;
-        let startPt = null; 
-        let peakPt = null; 
-        let endPt = null;
+        let startPt   = null;   // impact
+        let halfUpPt  = null;   // halfway up
+        let peakPt    = null;   // apex
+        let halfDownPt = null;  // halfway down
+        let endPt     = null;   // landing
 
-        // Initialize Physics Engine
+        // centerX: normalized X baseline from impact tap (0–1).
+        // All trajectory point X values are stored relative to this.
+        let centerX = null;
+
         const physics = new KickPhysicsEngine();
 
-        // 1. Loading
+        // ─── Workflow steps descriptor ───────────────────────────────────────────
+        // Each step: { label, color, status, confirm }
+        // confirm() is called when the user presses the workflow button.
+        // Must return true to advance.
+        function getSteps() {
+            return [
+                {
+                    id: 'scale1',
+                    status: "Step 1 of 7: Tap to set 1st scale reference dot (10 yds apart)",
+                    label: "CONFIRM 1ST DOT",
+                    color: '#007aff',
+                    ready: () => activeTap !== null,
+                    confirm: () => {
+                        scaleDots.push({...activeTap});
+                        activeTap = null;
+                    }
+                },
+                {
+                    id: 'scale2',
+                    status: "Step 2 of 7: Tap to set 2nd scale reference dot",
+                    label: "CONFIRM 2ND DOT",
+                    color: '#007aff',
+                    ready: () => activeTap !== null,
+                    confirm: () => {
+                        scaleDots.push({...activeTap});
+                        activeTap = null;
+                    }
+                },
+                {
+                    id: 'impact',
+                    status: "Step 3 of 7: Scrub to IMPACT frame. Tap the ball.",
+                    label: "MARK IMPACT",
+                    color: '#34c759',
+                    ready: () => activeTap !== null,
+                    confirm: () => {
+                        // Store raw position and record centerX baseline
+                        centerX = activeTap.x;
+                        startPt = { time: video.currentTime, pos: { x: activeTap.x, y: activeTap.y } };
+                        activeTap = null;
+                    }
+                },
+                {
+                    id: 'halfUp',
+                    status: "Step 4 of 7: Scrub to HALF-WAY UP frame. Tap the ball.",
+                    label: "MARK HALF-UP",
+                    color: '#5ac8fa',
+                    ready: () => activeTap !== null && startPt !== null && video.currentTime > startPt.time,
+                    confirm: () => {
+                        halfUpPt = { time: video.currentTime, pos: normalizedPos(activeTap) };
+                        activeTap = null;
+                    }
+                },
+                {
+                    id: 'apex',
+                    status: "Step 5 of 7: Scrub to APEX (highest point). Tap the ball.",
+                    label: "MARK APEX",
+                    color: '#ff9500',
+                    ready: () => activeTap !== null && halfUpPt !== null && video.currentTime > halfUpPt.time,
+                    confirm: () => {
+                        peakPt = { time: video.currentTime, pos: normalizedPos(activeTap) };
+                        activeTap = null;
+                    }
+                },
+                {
+                    id: 'halfDown',
+                    status: "Step 6 of 7: Scrub to HALF-WAY DOWN frame. Tap the ball.",
+                    label: "MARK HALF-DOWN",
+                    color: '#bf5af2',
+                    ready: () => activeTap !== null && peakPt !== null && video.currentTime > peakPt.time,
+                    confirm: () => {
+                        halfDownPt = { time: video.currentTime, pos: normalizedPos(activeTap) };
+                        activeTap = null;
+                    }
+                },
+                {
+                    id: 'landing',
+                    status: "Step 7 of 7: Scrub to LANDING frame. Tap the ball.",
+                    label: "MARK LANDING",
+                    color: '#ff3b30',
+                    ready: () => activeTap !== null && halfDownPt !== null && video.currentTime > halfDownPt.time,
+                    confirm: () => {
+                        endPt = { time: video.currentTime, pos: normalizedPos(activeTap) };
+                        activeTap = null;
+                        handleCalculateAndReport();
+                    }
+                }
+            ];
+        }
+
+        // Returns normalized pos: X relative to centerX baseline, Y unchanged.
+        // impact itself stores raw X (centerX); subsequent points store offset.
+        function normalizedPos(tap) {
+            return {
+                x: tap.x - centerX + 0.5,  // shift so center = 0.5 (neutral)
+                y: tap.y
+            };
+        }
+
+        // Current step index (0–6), or 7 when all done
+        function currentStepIndex() {
+            if (scaleDots.length === 0) return 0;
+            if (scaleDots.length === 1) return 1;
+            if (!startPt)    return 2;
+            if (!halfUpPt)   return 3;
+            if (!peakPt)     return 4;
+            if (!halfDownPt) return 5;
+            if (!endPt)      return 6;
+            return 7; // complete
+        }
+
+        // ─── File Loading ─────────────────────────────────────────────────────────
         document.getElementById('file-upload').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -286,7 +446,7 @@
             };
         });
 
-        // 2. Viewport Clipping & DPI Sync
+        // ─── Canvas / DPI ─────────────────────────────────────────────────────────
         function resizeCanvas() {
             if (!isVideoLoaded) return;
             const rect = video.getBoundingClientRect();
@@ -299,7 +459,7 @@
         }
         window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 
-        // Inputs
+        // ─── Inputs ───────────────────────────────────────────────────────────────
         document.getElementById('cam-depth').addEventListener('input', (e) => {
             cameraDistance = parseFloat(e.target.value);
             document.getElementById('depth-val').innerText = cameraDistance;
@@ -315,7 +475,7 @@
             draw(); 
         });
 
-        // Playback
+        // ─── Playback ─────────────────────────────────────────────────────────────
         video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
         scrubber.addEventListener('input', (e) => { isScrubbing = true; video.currentTime = e.target.value; });
         scrubber.addEventListener('change', () => { isScrubbing = false; });
@@ -330,150 +490,227 @@
             video.currentTime += (1/fps) * f; 
         }
 
-        // 3. Canvas Tapping (Normalized to video coords)
+        // ─── Canvas Tap ───────────────────────────────────────────────────────────
         canvas.addEventListener('pointerdown', (e) => {
             const rect = canvas.getBoundingClientRect();
-            const x = ((e.clientX - rect.left) / rect.width);
-            const y = ((e.clientY - rect.top) / rect.height);
-            activeTap = {x, y};
-            if(zoomLevel > 1) zoomWrapper.style.transformOrigin = `${activeTap.x * 100}% ${activeTap.y * 100}%`;
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top)  / rect.height;
+            activeTap = { x, y };
+            if (zoomLevel > 1) zoomWrapper.style.transformOrigin = `${x * 100}% ${y * 100}%`;
             updateWorkflow();
             draw();
         });
 
-        // 4. DPR Normalized Reticles
+        // ─── Draw ─────────────────────────────────────────────────────────────────
         function draw() {
             if (!isVideoLoaded) return;
-            const w = canvas.clientWidth; 
+            const w = canvas.clientWidth;
             const h = canvas.clientHeight;
             ctx.clearRect(0, 0, w, h);
-            
-            // Critical fix: divide radius by zoom to keep crisp and constant size
-            const invZoom = 1.0 / zoomLevel;
-            const dotRad = 6 * invZoom;
 
-            // Draw Scale line
+            const invZoom = 1.0 / zoomLevel;
+            const dotRad  = 6 * invZoom;
+
+            // Center reference line (vertical dashed line at centerX)
+            if (centerX !== null) {
+                const cx = centerX * w;
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+                ctx.lineWidth = 1.5 * invZoom;
+                ctx.setLineDash([8 * invZoom, 6 * invZoom]);
+                ctx.beginPath();
+                ctx.moveTo(cx, 0);
+                ctx.lineTo(cx, h);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.restore();
+            }
+
+            // Scale line
             if (scaleDots.length === 2) {
-                ctx.strokeStyle = '#3a3a3c';
+                ctx.strokeStyle = '#007aff';
                 ctx.lineWidth = 2 * invZoom;
                 ctx.beginPath();
                 ctx.moveTo(scaleDots[0].x * w, scaleDots[0].y * h);
                 ctx.lineTo(scaleDots[1].x * w, scaleDots[1].y * h);
                 ctx.stroke();
             }
-
             ctx.fillStyle = '#007aff';
             scaleDots.forEach(pt => {
                 ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, dotRad, 0, Math.PI * 2); ctx.fill();
             });
 
+            // Active tap crosshair
             if (activeTap) {
-                const px = activeTap.x * w; const py = activeTap.y * h; const len = 12 * invZoom;
+                const px = activeTap.x * w, py = activeTap.y * h, len = 12 * invZoom;
                 ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 2.5 * invZoom;
-                ctx.beginPath(); ctx.moveTo(px, py - len); ctx.lineTo(px, py + len); 
-                ctx.moveTo(px - len, py); ctx.lineTo(px + len, py); ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(px, py - len); ctx.lineTo(px, py + len);
+                ctx.moveTo(px - len, py); ctx.lineTo(px + len, py);
+                ctx.stroke();
             }
 
-            const drawMarker = (pt, color) => {
-                if (!pt) return; 
-                ctx.fillStyle = color; 
-                ctx.beginPath(); ctx.arc(pt.pos.x * w, pt.pos.y * h, dotRad, 0, Math.PI * 2); ctx.fill();
+            // Helper: draw a confirmed point. For points stored with normalized X,
+            // we reverse the normalization back to canvas X for display.
+            const drawMarker = (pt, color, label, isNormalized) => {
+                if (!pt) return;
+                let px;
+                if (isNormalized) {
+                    // reverse: canvas x = (normalizedX - 0.5 + centerX) * w
+                    px = (pt.pos.x - 0.5 + (centerX || 0.5)) * w;
+                } else {
+                    px = pt.pos.x * w;
+                }
+                const py = pt.pos.y * h;
+                ctx.fillStyle = color;
+                ctx.beginPath(); ctx.arc(px, py, dotRad, 0, Math.PI * 2); ctx.fill();
+                if (label) {
+                    ctx.fillStyle = color;
+                    ctx.font = `bold ${11 * invZoom}px -apple-system, sans-serif`;
+                    ctx.fillText(label, px + dotRad + 2 * invZoom, py + 4 * invZoom);
+                }
             };
-            drawMarker(startPt, '#34c759'); 
-            drawMarker(peakPt, '#ff9500'); 
-            drawMarker(endPt, '#ff3b30'); 
+
+            drawMarker(startPt,    '#34c759', 'Impact',   false);
+            drawMarker(halfUpPt,   '#5ac8fa', '½↑',       true);
+            drawMarker(peakPt,     '#ff9500', 'Apex',     true);
+            drawMarker(halfDownPt, '#bf5af2', '½↓',       true);
+            drawMarker(endPt,      '#ff3b30', 'Landing',  true);
+
+            // Draw trajectory curve through all confirmed points
+            const confirmedPts = [startPt, halfUpPt, peakPt, halfDownPt, endPt]
+                .filter(Boolean)
+                .map(pt => {
+                    const isNorm = (pt !== startPt);
+                    const px = isNorm ? (pt.pos.x - 0.5 + (centerX || 0.5)) * w : pt.pos.x * w;
+                    const py = pt.pos.y * h;
+                    return { x: px, y: py };
+                });
+
+            if (confirmedPts.length >= 2) {
+                ctx.strokeStyle = 'rgba(255, 200, 0, 0.6)';
+                ctx.lineWidth = 2 * invZoom;
+                ctx.setLineDash([5 * invZoom, 4 * invZoom]);
+                ctx.beginPath();
+                ctx.moveTo(confirmedPts[0].x, confirmedPts[0].y);
+                for (let i = 1; i < confirmedPts.length; i++) {
+                    ctx.lineTo(confirmedPts[i].x, confirmedPts[i].y);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
         }
 
-        // 5. Frictionless State Machine
+        // ─── Progress Dots ────────────────────────────────────────────────────────
+        function updateProgressDots(stepIdx) {
+            for (let i = 0; i < 7; i++) {
+                const dot = document.getElementById(`dot-${i}`);
+                if (i < stepIdx)       dot.className = 'progress-dot done';
+                else if (i === stepIdx) dot.className = 'progress-dot active';
+                else                    dot.className = 'progress-dot';
+            }
+        }
+
+        // ─── Workflow State Machine ───────────────────────────────────────────────
         function updateWorkflow() {
             if (!isVideoLoaded) return;
             const btn = document.getElementById('btn-workflow');
-            
-            if (scaleDots.length === 0) {
-                statusText.innerText = "Step 1: Tap to set 1st scale dot (10 yds)";
-                btn.innerText = "CONFIRM 1ST DOT"; 
-                btn.style.background = '#007aff'; 
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
-            } 
-            else if (scaleDots.length === 1) {
-                statusText.innerText = "Step 2: Tap to set 2nd scale dot (10 yds)";
-                btn.innerText = "CONFIRM 2ND DOT"; 
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { scaleDots.push(activeTap); activeTap = null; updateWorkflow(); draw(); };
-            } 
-            else if (startPt === null) {
-                statusText.innerText = "Scrub to IMPACT frame. Tap the ball.";
-                btn.innerText = "MARK IMPACT"; 
-                btn.style.background = '#34c759'; 
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { startPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateWorkflow(); draw(); };
-            } 
-            else if (peakPt === null) {
-                statusText.innerText = "Scrub to PEAK frame. Tap the ball.";
-                btn.innerText = "MARK PEAK"; 
-                btn.style.background = '#ff9500'; 
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { peakPt = {time: video.currentTime, pos: activeTap}; activeTap = null; updateWorkflow(); draw(); };
-            } 
-            else if (endPt === null) {
-                statusText.innerText = "Scrub to LANDING frame. Tap the ball.";
-                btn.innerText = "MARK LANDING"; 
-                btn.style.background = '#ff3b30'; 
-                btn.disabled = (activeTap === null);
-                btn.onclick = () => { 
-                    endPt = {time: video.currentTime, pos: activeTap}; 
-                    activeTap = null; 
-                    handleCalculateAndReport(); 
-                    updateWorkflow(); 
-                    draw(); 
-                };
-            } 
-            else {
-                statusText.innerText = "Analysis Complete.";
-                btn.innerText = "VIEW REPORT"; 
-                btn.style.background = '#007aff'; 
+            const undoBtn = document.getElementById('btn-undo');
+            const stepIdx = currentStepIndex();
+            const steps = getSteps();
+
+            updateProgressDots(stepIdx);
+
+            // Enable undo if at least one point confirmed beyond step 0
+            undoBtn.disabled = (stepIdx === 0);
+
+            if (stepIdx === 7) {
+                // All points placed
+                statusText.innerText = "Analysis complete.";
+                btn.innerText = "VIEW REPORT";
+                btn.style.background = '#007aff';
                 btn.disabled = false;
                 btn.onclick = () => document.getElementById('report-modal').style.display = 'flex';
+                return;
             }
+
+            const step = steps[stepIdx];
+            statusText.innerText = step.status;
+            btn.innerText = step.label;
+            btn.style.background = step.color;
+            btn.disabled = !step.ready();
+            btn.onclick = () => {
+                if (!step.ready()) return;
+                step.confirm();
+                updateWorkflow();
+                draw();
+            };
         }
 
-        // 6. UI Hand-off to Physics Engine
-        function handleCalculateAndReport() {
-            // Call the isolated physics engine
-            const activeReport = physics.calculate(startPt, peakPt, endPt, scaleDots, cameraDistance, canvas.clientWidth);
+        // ─── Undo Last Point ─────────────────────────────────────────────────────
+        function undoLast() {
+            const stepIdx = currentStepIndex();
+            // stepIdx tells us what we're ABOUT to do; undo means clearing what was
+            // last done (stepIdx - 1).
+            if      (stepIdx >= 7) { endPt      = null; }
+            else if (stepIdx === 6) { halfDownPt = null; }
+            else if (stepIdx === 5) { peakPt     = null; }
+            else if (stepIdx === 4) { halfUpPt   = null; }
+            else if (stepIdx === 3) { startPt    = null; centerX = null; }
+            else if (stepIdx === 2) { scaleDots.pop(); }
+            else if (stepIdx === 1) { scaleDots.pop(); }
+            activeTap = null;
+            updateWorkflow();
+            draw();
+        }
 
-            // 100 Kick History Logger
+        // ─── Calculate & Report ───────────────────────────────────────────────────
+        function handleCalculateAndReport() {
+            // Pass 5-point data to physics engine.
+            // startPt.pos.x is raw (= centerX); others are normalized (offset from center).
+            // Physics engine receives startPt with x=centerX, and all others with x relative
+            // to 0.5 baseline so engine can measure real lateral offset.
+            const activeReport = physics.calculate(
+                startPt, peakPt, endPt,
+                scaleDots, cameraDistance, canvas.clientWidth,
+                halfUpPt, halfDownPt   // new extended args
+            );
+
             let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
-            history.unshift(activeReport);
-            if(history.length > 100) history.pop(); 
+            history.unshift({ ...activeReport, date: new Date().toISOString() });
+            if (history.length > 100) history.pop();
             localStorage.setItem('kickHistory', JSON.stringify(history));
 
-            // Populate Modal UI
-            document.getElementById('rep-max').innerText = `≤ ${Math.floor(activeReport.maxGoodDistance)} yds`;
-            document.getElementById('rep-miss').innerText = activeReport.drift;
-            document.getElementById('rep-time').innerText = `${activeReport.time.toFixed(2)}s`;
+            document.getElementById('rep-max').innerText   = `≤ ${Math.floor(activeReport.maxGoodDistance)} yds`;
+            document.getElementById('rep-miss').innerText  = activeReport.drift;
+            document.getElementById('rep-time').innerText  = `${activeReport.time.toFixed(2)}s`;
             document.getElementById('rep-height').innerText = `${activeReport.height.toFixed(1)} ft`;
             document.getElementById('rep-angle').innerText = `${activeReport.angle.toFixed(1)}°`;
 
             document.getElementById('report-modal').style.display = 'flex';
         }
 
+        // ─── Reset ────────────────────────────────────────────────────────────────
         function resetAll() {
-            scaleDots = []; 
-            activeTap = startPt = peakPt = endPt = null;
-            zoomLevel = 1.0; 
-            zoomWrapper.style.transform = `scale(1)`; 
-            document.getElementById('zoom-slider').value = 1; 
+            scaleDots = [];
+            activeTap = startPt = halfUpPt = peakPt = halfDownPt = endPt = null;
+            centerX = null;
+            zoomLevel = 1.0;
+            zoomWrapper.style.transform = 'scale(1)';
+            document.getElementById('zoom-slider').value = 1;
             document.getElementById('zoom-val').innerText = '1x';
-            if(isVideoLoaded) {
-                video.pause(); 
-                video.currentTime = 0; 
+            if (isVideoLoaded) {
+                video.pause();
+                video.currentTime = 0;
                 scrubber.value = 0;
             }
-            updateWorkflow(); 
+            updateWorkflow();
             draw();
         }
+
+        document.getElementById('btn-home').addEventListener('click', () => {
+            window.location.href = 'index.html';
+        });
     </script>
 </body>
 </html>
