@@ -529,12 +529,10 @@ let isScrubbing       = false;
 let zoomLevel         = 1.0;
 
 let scaleDots          = [];
-let ballBox            = null;  // {x1,y1,x2,y2} normalized — bounding box around ball on tee
+let ballTeeDots        = [];    // [topTap, bottomTap] normalized coords
 let ballTeePixelHeight = 0;
 let uprightDots        = [];    // [leftPost, rightPost] tapped on impact frame
 let activeTap          = null;
-let dragStart          = null;  // pointer-down position for box drawing
-let dragCurrent        = null;  // current drag position
 let startPt            = null;
 let halfUpPt           = null;
 let peakPt             = null;
@@ -664,19 +662,31 @@ function getSteps() {
         ready: () => activeTap !== null,
         confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
     });
-    // 3. Ball bounding box — replaces ball top + ball bottom + impact tap
+    // 3. Ball top tap
     steps.push({
-        id: 'ballBox',
-        status: () => `Step ${n} of ${totalSteps()}: Pause on still frame before kick. DRAG a box around the ball.`,
-        label: 'CONFIRM BALL BOX',
+        id: 'ballTop',
+        status: () => `Step ${n} of ${totalSteps()}: Pause on still frame before kick. Tap the TOP of the ball.`,
+        label: 'CONFIRM BALL TOP',
         color: '#ff9500',
-        ready: () => ballBox !== null,
+        ready: () => activeTap !== null,
+        confirm: () => { ballTeeDots[0] = {...activeTap}; activeTap = null; }
+    });
+    // 4. Ball bottom tap — midpoint = impact baseline
+    steps.push({
+        id: 'ballBottom',
+        status: () => `Step ${n} of ${totalSteps()}: Tap the BOTTOM of the ball (same frame).`,
+        label: 'CONFIRM BALL BOTTOM',
+        color: '#ff9500',
+        ready: () => activeTap !== null,
         confirm: () => {
-            const cx = (ballBox.x1 + ballBox.x2) / 2;
-            const cy = (ballBox.y1 + ballBox.y2) / 2;
-            ballTeePixelHeight = (ballBox.y2 - ballBox.y1) * canvas.clientHeight;
+            ballTeeDots[1] = {...activeTap};
+            ballTeePixelHeight = Math.abs(ballTeeDots[0].y - ballTeeDots[1].y) * canvas.clientHeight;
+            // Midpoint of top+bottom = impact position and lateral baseline
+            const cx = (ballTeeDots[0].x + ballTeeDots[1].x) / 2;
+            const cy = (ballTeeDots[0].y + ballTeeDots[1].y) / 2;
             centerX = cx;
             startPt = { time: video.currentTime, pos: { x: cx, y: cy } };
+            activeTap = null;
         }
     });
 
@@ -751,30 +761,32 @@ function getSteps() {
 }
 
 function totalSteps() {
-    // Scale×2 + BallBox×1 + (Uprights×2 optional) + halfUp + apex + halfDown + landing = 7 or 9
-    return 7 + (setupConfig.uprrightsVisible ? 2 : 0);
+    // scale×2 + ballTop + ballBottom + (uprights×2 optional) + halfUp + apex + halfDown + landing
+    return 8 + (setupConfig.uprrightsVisible ? 2 : 0);
 }
 
 function currentStepIndex() {
-    // Steps: 0=scale1, 1=scale2, 2=ballBox, [3=uprightL, 4=uprightR], 3/5=halfUp, 4/6=apex, 5/7=halfDown, 6/8=landing
+    // 0=scale1, 1=scale2, 2=ballTop, 3=ballBottom(sets startPt),
+    // [4=uprightL, 5=uprightR,] 4/6=halfUp, 5/7=apex, 6/8=halfDown, 7/9=landing
     let i = 0;
-    if (scaleDots.length > 0) i = 1;
-    if (scaleDots.length > 1) i = 2;
-    if (startPt) { // ballBox confirmed sets startPt
+    if (scaleDots.length > 0)    i = 1;
+    if (scaleDots.length > 1)    i = 2;
+    if (ballTeeDots.length > 0)  i = 3;
+    if (startPt) { // set when ballBottom confirmed
         if (setupConfig.uprrightsVisible) {
-            i = 3;
-            if (uprightDots.length > 0) i = 4;
-            if (uprightDots.length > 1) i = 5;
-            if (halfUpPt)   i = 6;
-            if (peakPt)     i = 7;
-            if (halfDownPt) i = 8;
-            if (endPt)      i = 9;
+            i = 4;
+            if (uprightDots.length > 0) i = 5;
+            if (uprightDots.length > 1) i = 6;
+            if (halfUpPt)   i = 7;
+            if (peakPt)     i = 8;
+            if (halfDownPt) i = 9;
+            if (endPt)      i = 10;
         } else {
-            i = 3;
-            if (halfUpPt)   i = 4;
-            if (peakPt)     i = 5;
-            if (halfDownPt) i = 6;
-            if (endPt)      i = 7;
+            i = 4;
+            if (halfUpPt)   i = 5;
+            if (peakPt)     i = 6;
+            if (halfDownPt) i = 7;
+            if (endPt)      i = 8;
         }
     }
     return i;
@@ -868,66 +880,33 @@ function stepFrame(f) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Canvas pointer events — tap for dots, drag for ball box
+//  Canvas pointer events
 // ═══════════════════════════════════════════════════════════════════════
-function isBoxStep() {
-    // Returns true when the current step expects a bounding box drag
-    const i = currentStepIndex();
-    const hasU = setupConfig.uprrightsVisible;
-    // ballBox step is always step index 2 (after 2 scale dots)
-    return i === 2;
-}
 
-// Clamp normalized coords to [0,1] so taps/drags outside the video frame
-// are pinned to the edge and never produce out-of-bounds measurements.
-function clamp01(v) { return Math.max(0, Math.min(1, v)); }
-function canvasCoords(e) {
-    const rect = canvas.getBoundingClientRect();
+// Returns normalized [0,1] coords clamped strictly to the video bounds.
+// Uses the video element's bounding rect (not canvas) so taps on the
+// letterbox/pillarbox black areas around the video are rejected.
+function videoCoords(e) {
+    const vRect = video.getBoundingClientRect();
+    const cx = e.clientX, cy = e.clientY;
+    // Reject taps outside the actual video element
+    if (cx < vRect.left || cx > vRect.right || cy < vRect.top || cy > vRect.bottom) {
+        return null;
+    }
     return {
-        x: clamp01((e.clientX - rect.left) / rect.width),
-        y: clamp01((e.clientY - rect.top)  / rect.height),
+        x: (cx - vRect.left) / vRect.width,
+        y: (cy - vRect.top)  / vRect.height,
     };
 }
 
 canvas.addEventListener('pointerdown', e => {
-    canvas.setPointerCapture(e.pointerId);
-    const { x, y } = canvasCoords(e);
-    // Always update zoom origin on pointerdown regardless of step type
+    const coords = videoCoords(e);
+    if (!coords) return; // tap was outside video — ignore
+    const { x, y } = coords;
     if (zoomLevel > 1) zoomWrapper.style.transformOrigin = `${x*100}% ${y*100}%`;
-    if (isBoxStep()) {
-        dragStart   = { x, y };
-        dragCurrent = { x, y };
-        activeTap   = null;
-    } else {
-        activeTap = { x, y };
-        dragStart = dragCurrent = null;
-        updateWorkflow();
-    }
+    activeTap = { x, y };
+    updateWorkflow();
     draw();
-});
-
-canvas.addEventListener('pointermove', e => {
-    if (!dragStart) return;
-    dragCurrent = canvasCoords(e);
-    draw();
-});
-
-canvas.addEventListener('pointerup', e => {
-    if (dragStart && dragCurrent) {
-        const { x, y } = canvasCoords(e);
-        dragCurrent = { x, y };
-        const x1 = Math.min(dragStart.x, dragCurrent.x);
-        const x2 = Math.max(dragStart.x, dragCurrent.x);
-        const y1 = Math.min(dragStart.y, dragCurrent.y);
-        const y2 = Math.max(dragStart.y, dragCurrent.y);
-        // Only accept if box is large enough to be intentional (>1% of canvas each side)
-        if ((x2 - x1) > 0.01 && (y2 - y1) > 0.01) {
-            ballBox = { x1, y1, x2, y2 };
-        }
-        dragStart = dragCurrent = null;
-        updateWorkflow();
-        draw();
-    }
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -984,42 +963,30 @@ function draw() {
         ctx.beginPath(); ctx.arc(p.x*w, p.y*h, dr, 0, Math.PI*2); ctx.fill();
     });
 
-    // Live drag box preview (while user is drawing)
-    if (dragStart && dragCurrent) {
-        const bx = Math.min(dragStart.x, dragCurrent.x) * w;
-        const by = Math.min(dragStart.y, dragCurrent.y) * h;
-        const bw = Math.abs(dragCurrent.x - dragStart.x) * w;
-        const bh = Math.abs(dragCurrent.y - dragStart.y) * h;
-        ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 2*iz;
-        ctx.setLineDash([4*iz, 3*iz]);
-        ctx.strokeRect(bx, by, bw, bh);
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(255,149,0,0.1)';
-        ctx.fillRect(bx, by, bw, bh);
-    }
-
-    // Confirmed ball box
-    if (ballBox) {
-        const bx = ballBox.x1 * w;
-        const by = ballBox.y1 * h;
-        const bw = (ballBox.x2 - ballBox.x1) * w;
-        const bh = (ballBox.y2 - ballBox.y1) * h;
-        ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 2*iz;
-        ctx.strokeRect(bx, by, bw, bh);
-        ctx.fillStyle = 'rgba(255,149,0,0.1)';
-        ctx.fillRect(bx, by, bw, bh);
-        // Center crosshair
-        const cx2 = (ballBox.x1 + ballBox.x2) / 2 * w;
-        const cy2 = (ballBox.y1 + ballBox.y2) / 2 * h;
-        const len = 8*iz;
-        ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 1.5*iz;
-        ctx.beginPath();
-        ctx.moveTo(cx2-len, cy2); ctx.lineTo(cx2+len, cy2);
-        ctx.moveTo(cx2, cy2-len); ctx.lineTo(cx2, cy2+len);
-        ctx.stroke();
+    // Ball tee dots (top + bottom) with connecting line and midpoint cross
+    ballTeeDots.forEach((p, i) => {
+        ctx.fillStyle = '#ff9500';
+        ctx.beginPath(); ctx.arc(p.x*w, p.y*h, dr, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#ff9500';
         ctx.font = `bold ${10*iz}px -apple-system,sans-serif`;
-        ctx.fillText('Ball', bx + 2*iz, by - 3*iz);
+        ctx.fillText(i===0 ? 'Ball Top' : 'Ball Bot', p.x*w + dr+2*iz, p.y*h + 4*iz);
+    });
+    if (ballTeeDots.length === 2) {
+        // Line between top and bottom
+        ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 1.5*iz;
+        ctx.beginPath();
+        ctx.moveTo(ballTeeDots[0].x*w, ballTeeDots[0].y*h);
+        ctx.lineTo(ballTeeDots[1].x*w, ballTeeDots[1].y*h);
+        ctx.stroke();
+        // Midpoint crosshair = impact position
+        const mx = (ballTeeDots[0].x + ballTeeDots[1].x) / 2 * w;
+        const my = (ballTeeDots[0].y + ballTeeDots[1].y) / 2 * h;
+        const len = 8 * iz;
+        ctx.strokeStyle = '#34c759'; ctx.lineWidth = 1.5*iz;
+        ctx.beginPath();
+        ctx.moveTo(mx-len, my); ctx.lineTo(mx+len, my);
+        ctx.moveTo(mx, my-len); ctx.lineTo(mx, my+len);
+        ctx.stroke();
     }
 
     // Upright dots
@@ -1115,26 +1082,27 @@ function undoLast() {
     const i = currentStepIndex();
     const hasU = setupConfig.uprrightsVisible;
     if (!hasU) {
-        if      (i >= 7) endPt      = null;
-        else if (i === 6) halfDownPt = null;
-        else if (i === 5) peakPt     = null;
-        else if (i === 4) halfUpPt   = null;
-        else if (i === 3) { startPt = null; centerX = null; ballBox = null; ballTeePixelHeight = 0; }
+        if      (i >= 8) endPt      = null;
+        else if (i === 7) halfDownPt = null;
+        else if (i === 6) peakPt     = null;
+        else if (i === 5) halfUpPt   = null;
+        else if (i === 4) { startPt = null; centerX = null; ballTeeDots.pop(); ballTeePixelHeight = 0; }
+        else if (i === 3) ballTeeDots.pop();
         else if (i === 2) scaleDots.pop();
         else if (i === 1) scaleDots.pop();
     } else {
-        if      (i >= 9) endPt      = null;
-        else if (i === 8) halfDownPt = null;
-        else if (i === 7) peakPt     = null;
-        else if (i === 6) halfUpPt   = null;
-        else if (i === 5) { uprightDots.pop(); }
-        else if (i === 4) { uprightDots.pop(); }
-        else if (i === 3) { startPt = null; centerX = null; ballBox = null; ballTeePixelHeight = 0; }
-        else if (i === 2) scaleDots.pop();
-        else if (i === 1) scaleDots.pop();
+        if      (i >= 10) endPt      = null;
+        else if (i === 9)  halfDownPt = null;
+        else if (i === 8)  peakPt     = null;
+        else if (i === 7)  halfUpPt   = null;
+        else if (i === 6)  uprightDots.pop();
+        else if (i === 5)  uprightDots.pop();
+        else if (i === 4)  { startPt = null; centerX = null; ballTeeDots.pop(); ballTeePixelHeight = 0; }
+        else if (i === 3)  ballTeeDots.pop();
+        else if (i === 2)  scaleDots.pop();
+        else if (i === 1)  scaleDots.pop();
     }
     activeTap = null;
-    dragStart = dragCurrent = null;
     updateWorkflow();
     draw();
 }
@@ -1214,9 +1182,9 @@ function handleCalculateAndReport() {
 //  Reset
 // ═══════════════════════════════════════════════════════════════════════
 function resetAll() {
-    scaleDots = []; ballBox = null; uprightDots = [];
+    scaleDots = []; ballTeeDots = []; uprightDots = [];
     ballTeePixelHeight = 0;
-    activeTap = dragStart = dragCurrent = null;
+    activeTap = null;
     startPt = halfUpPt = peakPt = halfDownPt = endPt = null;
     centerX = null;
     zoomLevel = 1.0;
