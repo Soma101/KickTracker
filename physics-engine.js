@@ -103,22 +103,30 @@ class KickPhysicsEngine {
         console.log('cameraDistance:', cameraDistance, 'yds');
         console.log('uprightCenterX:', uprightCenterX);
         console.log('startPt.pos.x (centerX):', startPt.pos.x.toFixed(4));
-        if (uprightCenterX !== null) {
-            const offsetPx = (startPt.pos.x - uprightCenterX) * canvasWidth;
-            console.log('cameraOffsetPx (subtracted from each lateral):', offsetPx.toFixed(3));
-        }
+        const zeroRefX = (uprightCenterX !== null) ? uprightCenterX : startPt.pos.x;
+        console.log('zeroRef (uprightCenter or impactX):', zeroRefX.toFixed(4));
+        console.log('uprightCenterX:', uprightCenterX, '  startPt.pos.x:', startPt.pos.x.toFixed(4));
+        console.log('offset from impact to upright center (px):', ((startPt.pos.x - zeroRefX) * canvasWidth).toFixed(2));
 
         const points3d = rawPoints.map((p, i) => {
             const t = times[i];
             const Z = vFwd_yds * t;
 
-            let lateralPx = p.isNorm ? (p.xNorm - 0.5) * canvasWidth : 0;
-            const rawLateralPx = lateralPx;
-
-            if (uprightCenterX !== null && p.isNorm) {
-                const cameraOffsetPx = (startPt.pos.x - uprightCenterX) * canvasWidth;
-                lateralPx -= cameraOffsetPx;
+            // lateralPx: how many pixels the ball is left/right of the zero reference.
+            // Zero reference = uprightCenterX if tapped, otherwise centerX (impact tap).
+            // xNorm for impact = raw canvas x (centerX).
+            // xNorm for subsequent points = tap.x - centerX + 0.5 (normalized to impact).
+            // To get raw canvas x back: rawX = xNorm - 0.5 + centerX
+            // Then lateralPx = (rawX - zeroRef) * canvasWidth
+            const zeroRef = (uprightCenterX !== null) ? uprightCenterX : startPt.pos.x;
+            let rawCanvasX;
+            if (!p.isNorm) {
+                rawCanvasX = startPt.pos.x; // impact: raw x = centerX
+            } else {
+                rawCanvasX = p.xNorm - 0.5 + startPt.pos.x; // denormalize back to raw canvas x
             }
+            const rawLateralPx = (rawCanvasX - startPt.pos.x) * canvasWidth; // for logging
+            const lateralPx    = (rawCanvasX - zeroRef) * canvasWidth;
             const X = lateralPx * yardsPerPixel_ref;
 
             const fittedYPx = ay*t*t + by*t + cy;
