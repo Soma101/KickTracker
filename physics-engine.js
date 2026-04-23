@@ -158,6 +158,7 @@ class KickPhysicsEngine {
     // tol.rightTol = yards of room on the RIGHT side of upright center (can be negative)
     // Drift > 0 = right, < 0 = left
     _calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, maxDist, tol) {
+        console.log('maxGood inputs:', {vUp_fps, vFwd_yds, maxDist, latCoeffs}); //developer backdoor for nums
         const [al, bl, cl] = latCoeffs;
         const crossbar = tol.crossbarFt || 10;
         let maxGood = 0;
