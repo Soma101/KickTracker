@@ -112,21 +112,13 @@ class KickPhysicsEngine {
             const t = times[i];
             const Z = vFwd_yds * t;
 
-            // lateralPx: how many pixels the ball is left/right of the zero reference.
-            // Zero reference = uprightCenterX if tapped, otherwise centerX (impact tap).
-            // xNorm for impact = raw canvas x (centerX).
-            // xNorm for subsequent points = tap.x - centerX + 0.5 (normalized to impact).
-            // To get raw canvas x back: rawX = xNorm - 0.5 + centerX
-            // Then lateralPx = (rawX - zeroRef) * canvasWidth
-            const zeroRef = (uprightCenterX !== null) ? uprightCenterX : startPt.pos.x;
-            let rawCanvasX;
-            if (!p.isNorm) {
-                rawCanvasX = startPt.pos.x; // impact: raw x = centerX
-            } else {
-                rawCanvasX = p.xNorm - 0.5 + startPt.pos.x; // denormalize back to raw canvas x
-            }
-            const rawLateralPx = (rawCanvasX - startPt.pos.x) * canvasWidth; // for logging
-            const lateralPx    = (rawCanvasX - zeroRef) * canvasWidth;
+            // X is always measured relative to impact (ball starts at X=0).
+            // Upright offset is handled separately by shifting the tolerance window.
+            // xNorm for impact = raw canvas x (centerX) → lateral = 0.
+            // xNorm for subsequent points = tap.x - centerX + 0.5.
+            // lateralPx = (xNorm - 0.5) * canvasWidth = pixels from impact baseline.
+            const lateralPx = p.isNorm ? (p.xNorm - 0.5) * canvasWidth : 0;
+            const rawLateralPx = lateralPx; // for logging (same now)
             const X = lateralPx * yardsPerPixel_ref;
 
             const fittedYPx = ay*t*t + by*t + cy;
@@ -152,13 +144,30 @@ class KickPhysicsEngine {
         console.log('lateral at Z=0 (should be ~0 if ball lined up with uprights):', cl.toFixed(4), 'yds');
         console.log('lateral at Z=kickDist:', (al*kickDist_yd*kickDist_yd + bl*kickDist_yd + cl).toFixed(3), 'yds');
 
-        // ── 11. Good From ─────────────────────────────────────────────────────
+        // ── 11. Adjust tolerance window for ball's starting position vs uprights ──
+        // All trajectory X values are impact-relative (X=0 at impact).
+        // If ball started right of upright center, it has less room to drift right.
+        // Shift the window so the physics reflects real upright geometry.
+        let adjustedTol = { ...tol };
+        if (uprightCenterX !== null) {
+            const ballOffsetYds = (startPt.pos.x - uprightCenterX) * canvasWidth * yardsPerPixel_ref;
+            console.log('ballOffsetFromUprightCenter (yds):', ballOffsetYds.toFixed(3), '(+right, -left)');
+            adjustedTol = {
+                ...tol,
+                rightTol: tol.rightTol - ballOffsetYds,
+                leftTol:  tol.leftTol  + ballOffsetYds,
+            };
+            console.log('original tol: left=' + tol.leftTol.toFixed(3) + ' right=' + tol.rightTol.toFixed(3));
+            console.log('adjusted tol: left=' + adjustedTol.leftTol.toFixed(3) + ' right=' + adjustedTol.rightTol.toFixed(3));
+        }
+
+        // ── 12. Good From ─────────────────────────────────────────────────────
         console.log('── GOOD FROM ──────────────────────────');
-        console.log('tol:', tol);
-        const maxGood = this._calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, tol);
+        console.log('tol:', adjustedTol);
+        const maxGood = this._calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, adjustedTol);
         console.log('maxGood result:', maxGood, 'yds');
 
-        // ── 12. Drift at landing ──────────────────────────────────────────────
+        // ── 13. Drift at landing ──────────────────────────────────────────────
         const driftAtLanding = al*kickDist_yd*kickDist_yd + bl*kickDist_yd + cl;
         let driftLabel;
         if      (Math.abs(driftAtLanding) < 0.5) driftLabel = 'Straight';
@@ -177,9 +186,10 @@ class KickPhysicsEngine {
             angle:           parseFloat(launchAngleDeg.toFixed(1)),
             trueApexTime:    parseFloat(trueApexTime.toFixed(2)),
             points3d,
-            _vUp:       vUp_fps,
-            _vFwd:      vFwd_yds,
-            _latCoeffs: latCoeffs,
+            _vUp:        vUp_fps,
+            _vFwd:       vFwd_yds,
+            _latCoeffs:  latCoeffs,
+            _adjustedTol: adjustedTol,
         };
     }
 
