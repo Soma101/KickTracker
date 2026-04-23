@@ -84,26 +84,17 @@ class KickPhysicsEngine {
         const points3d = rawPoints.map((p, i) => {
             const t = times[i];
             const Z = vFwd_yds * t;
-            const depth_yd = cameraDistance + Z;
-            const ypp      = yardsPerPixel_ref * (depth_yd / cameraDistance);
 
-            // Lateral: normalized points have x offset from 0.5 center
-            // If uprightCenterX is provided, also correct for camera angle:
-            //   the camera is offset by (centerX - uprightCenterX) in normalized coords
-            //   which translates to a real lateral offset at impact depth.
+            // Lateral: constant scale, no depth multiplier.
+            // Camera is directly behind the ball so lateral drift is in the
+            // same plane as the scale dots regardless of forward distance.
+            // Depth scaling massively over-amplifies pixel noise at long range.
             let lateralPx = p.isNorm ? (p.xNorm - 0.5) * canvasWidth : 0;
             if (uprightCenterX !== null && p.isNorm) {
-                // Camera angular offset correction:
-                // The upright center should map to 0 lateral drift.
-                // Ball impact center = startPt.pos.x (raw canvas x).
-                // Upright center = uprightCenterX (raw canvas x).
-                // Offset = (startPt.pos.x - uprightCenterX) * canvasWidth pixels
-                // This offset is a constant angular bias in ALL lateral measurements.
-                // We subtract it from each point's lateral pixel position.
                 const cameraOffsetPx = (startPt.pos.x - uprightCenterX) * canvasWidth;
                 lateralPx -= cameraOffsetPx;
             }
-            const X = lateralPx * ypp;
+            const X = lateralPx * yardsPerPixel_ref;
 
             const fittedYPx = ay*t*t + by*t + cy;
             const Y_ft = Math.max(0, (impactYPixel - fittedYPx) * ftPerPixel);
