@@ -114,6 +114,9 @@ class KickPhysicsEngine {
         const Wvals     = points3d.map(p => 1 / Math.pow(p.Z + cameraDistance, 2));
         const latCoeffs = this._fitParabolaWeighted(Zvals, Xvals, Wvals);
 
+        //for developer issues
+        console.log(tol) 
+        
         // ── 11. Good From with asymmetric tolerance ───────────────────────────
         const maxGood = this._calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, tol);
 
