@@ -1105,8 +1105,16 @@ function handleCalculateAndReport() {
     );
 
     // Also compute good-from for both NFL and CFB uprights for reference rows
-    const nflTol = getUprightTolerances({ ...setupConfig, uprightType:'nfl', uprightWidthFt:18.5, crossbarFt:10 });
-    const cfbTol = getUprightTolerances({ ...setupConfig, uprightType:'cfb', uprightWidthFt:23.4, crossbarFt:10 });
+    // For multi-standard comparison, apply the same ball offset adjustment
+    // that was applied in the main calculation (stored in report._adjustedTol).
+    // We re-derive the offset and apply it to NFL/CFB base tolerances.
+    const ballOffsetYds = report._adjustedTol
+        ? (report._adjustedTol.rightTol - getUprightTolerances(setupConfig).rightTol) * -1
+        : 0;
+    const nflBaseTol = getUprightTolerances({ ...setupConfig, uprightType:'nfl', uprightWidthFt:18.5, crossbarFt:10 });
+    const cfbBaseTol = getUprightTolerances({ ...setupConfig, uprightType:'cfb', uprightWidthFt:23.4, crossbarFt:10 });
+    const nflTol = { ...nflBaseTol, rightTol: nflBaseTol.rightTol - ballOffsetYds, leftTol: nflBaseTol.leftTol + ballOffsetYds };
+    const cfbTol = { ...cfbBaseTol, rightTol: cfbBaseTol.rightTol - ballOffsetYds, leftTol: cfbBaseTol.leftTol + ballOffsetYds };
     const nflGood = physics.calcMaxGoodExternal(report._vUp, report._vFwd, report._latCoeffs, report.kickDistance, nflTol);
     const cfbGood = physics.calcMaxGoodExternal(report._vUp, report._vFwd, report._latCoeffs, report.kickDistance, cfbTol);
 
