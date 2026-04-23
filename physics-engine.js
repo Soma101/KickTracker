@@ -105,10 +105,14 @@ class KickPhysicsEngine {
         const labels = ['impact','halfUp','apex','halfDown','landing'];
         points3d.forEach((p,i) => p.label = labels[i]);
 
-        // ── 10. Fit lateral parabola ──────────────────────────────────────────
-        const Zvals = points3d.map(p => p.Z);
-        const Xvals = points3d.map(p => p.X);
-        const latCoeffs = this._fitParabola(Zvals, Xvals);
+        // ── 10. Fit lateral parabola (weighted) ──────────────────────────────
+        // Weight = 1/(Z + cameraDistance)^2 so close taps dominate the fit.
+        // Impact (Z≈0): weight ≈ 1/camDist^2 (highest)
+        // Landing (Z≈100): weight ≈ 1/110^2  (much lower)
+        const Zvals     = points3d.map(p => p.Z);
+        const Xvals     = points3d.map(p => p.X);
+        const Wvals     = points3d.map(p => 1 / Math.pow(p.Z + cameraDistance, 2));
+        const latCoeffs = this._fitParabolaWeighted(Zvals, Xvals, Wvals);
 
         // ── 11. Good From with asymmetric tolerance ───────────────────────────
         const maxGood = this._calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, tol);
@@ -165,7 +169,25 @@ class KickPhysicsEngine {
         return maxGood;
     }
 
-    // ── Least-squares parabola fit: y = ax² + bx + c ─────────────────────────
+
+    // ── Weighted least-squares parabola fit: y = ax² + bx + c ───────────────
+    // ws[i] = weight for point i. Higher weight = point pulls fit more.
+    // Normal equations become: (WᵀW) * coeffs = Wᵀy  (diagonal weight matrix)
+    _fitParabolaWeighted(xs, ys, ws) {
+        const n = xs.length;
+        let s0=0,s1=0,s2=0,s3=0,s4=0,t0=0,t1=0,t2=0;
+        for (let i=0;i<n;i++) {
+            const w=ws[i], x=xs[i], y=ys[i], x2=x*x;
+            s0+=w;
+            s1+=w*x; s2+=w*x2; s3+=w*x2*x; s4+=w*x2*x2;
+            t0+=w*y; t1+=w*x*y; t2+=w*x2*y;
+        }
+        const M   = [[s4,s3,s2],[s3,s2,s1],[s2,s1,s0]];
+        const rhs = [t2,t1,t0];
+        return this._solve3x3(M, rhs);
+    }
+
+    // ── Unweighted least-squares parabola fit (used for vertical) ─────────────
     _fitParabola(xs, ys) {
         const n = xs.length;
         let s1=0,s2=0,s3=0,s4=0,t0=0,t1=0,t2=0;
