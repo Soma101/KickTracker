@@ -25,6 +25,9 @@
             justify-content: flex-end;
             gap: 8px;
             padding: 10px;
+            padding-top: max(10px, env(safe-area-inset-top));
+            padding-left: max(10px, env(safe-area-inset-left));
+            padding-right: max(10px, env(safe-area-inset-right));
             background-color: #1c1c1e;
             flex-shrink: 0;
         }
@@ -135,6 +138,9 @@
         .workflow-bar {
             background-color: #1c1c1e;
             padding: 12px;
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
+            padding-left: max(12px, env(safe-area-inset-left));
+            padding-right: max(12px, env(safe-area-inset-right));
             display: flex;
             gap: 10px;
             justify-content: center;
@@ -162,6 +168,10 @@
             align-items: center;
             justify-content: center;
             padding: 16px;
+            padding-top: max(16px, env(safe-area-inset-top));
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+            padding-left: max(16px, env(safe-area-inset-left));
+            padding-right: max(16px, env(safe-area-inset-right));
         }
         .modal-overlay.visible { display: flex; }
         .modal-box {
@@ -518,17 +528,19 @@ let isVideoLoaded     = false;
 let isScrubbing       = false;
 let zoomLevel         = 1.0;
 
-let scaleDots         = [];
-let ballTeeDots       = [];
+let scaleDots          = [];
+let ballBox            = null;  // {x1,y1,x2,y2} normalized — bounding box around ball on tee
 let ballTeePixelHeight = 0;
-let uprightDots       = [];   // [leftPost, rightPost] tapped on impact frame
-let activeTap         = null;
-let startPt           = null;
-let halfUpPt          = null;
-let peakPt            = null;
-let halfDownPt        = null;
-let endPt             = null;
-let centerX           = null; // raw canvas X of impact tap
+let uprightDots        = [];    // [leftPost, rightPost] tapped on impact frame
+let activeTap          = null;
+let dragStart          = null;  // pointer-down position for box drawing
+let dragCurrent        = null;  // current drag position
+let startPt            = null;
+let halfUpPt           = null;
+let peakPt             = null;
+let halfDownPt         = null;
+let endPt              = null;
+let centerX            = null;  // raw canvas X of ball box center
 
 const physics = new KickPhysicsEngine();
 
@@ -652,34 +664,28 @@ function getSteps() {
         ready: () => activeTap !== null,
         confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
     });
-    // 3. Ball top on tee
+    // 3. Ball bounding box — replaces ball top + ball bottom + impact tap
     steps.push({
-        id: 'ballTop',
-        status: () => `Step ${n} of ${totalSteps()}: Pause on a STILL frame before kick. Tap TOP of ball.`,
-        label: 'CONFIRM BALL TOP',
+        id: 'ballBox',
+        status: () => `Step ${n} of ${totalSteps()}: Pause on still frame before kick. DRAG a box around the ball.`,
+        label: 'CONFIRM BALL BOX',
         color: '#ff9500',
-        ready: () => activeTap !== null,
-        confirm: () => { ballTeeDots[0] = {...activeTap}; activeTap = null; }
-    });
-    // 4. Ball bottom on tee
-    steps.push({
-        id: 'ballBottom',
-        status: () => `Step ${n} of ${totalSteps()}: Tap BOTTOM of ball (same still frame).`,
-        label: 'CONFIRM BALL BOTTOM',
-        color: '#ff9500',
-        ready: () => activeTap !== null,
+        ready: () => ballBox !== null,
         confirm: () => {
-            ballTeeDots[1] = {...activeTap};
-            ballTeePixelHeight = Math.abs(ballTeeDots[0].y - ballTeeDots[1].y) * canvas.clientHeight;
-            activeTap = null;
+            const cx = (ballBox.x1 + ballBox.x2) / 2;
+            const cy = (ballBox.y1 + ballBox.y2) / 2;
+            ballTeePixelHeight = (ballBox.y2 - ballBox.y1) * canvas.clientHeight;
+            centerX = cx;
+            startPt = { time: video.currentTime, pos: { x: cx, y: cy } };
         }
     });
+
 
     // 5+6. If uprights visible: tap left post, right post on impact frame
     if (setupConfig.uprrightsVisible) {
         steps.push({
             id: 'uprightLeft',
-            status: () => `Step ${n} of ${totalSteps()}: Scrub to IMPACT frame. Tap the LEFT upright post.`,
+            status: () => `Step ${n} of ${totalSteps()}: Now scrub to IMPACT frame. Tap the LEFT upright post.`,
             label: 'CONFIRM LEFT POST',
             color: '#ffffff',
             ready: () => activeTap !== null,
@@ -694,22 +700,6 @@ function getSteps() {
             confirm: () => { uprightDots[1] = {...activeTap}; activeTap = null; }
         });
     }
-
-    // Impact (scrub to impact frame first — instruction shown in status)
-    steps.push({
-        id: 'impact',
-        status: () => setupConfig.uprrightsVisible
-            ? `Step ${n} of ${totalSteps()}: Tap the ball at IMPACT (same frame as posts).`
-            : `Step ${n} of ${totalSteps()}: Scrub to IMPACT frame, tap the ball.`,
-        label: 'MARK IMPACT',
-        color: '#34c759',
-        ready: () => activeTap !== null,
-        confirm: () => {
-            centerX = activeTap.x;
-            startPt = { time: video.currentTime, pos: { x: activeTap.x, y: activeTap.y } };
-            activeTap = null;
-        }
-    });
 
     steps.push({
         id: 'halfUp',
@@ -761,29 +751,31 @@ function getSteps() {
 }
 
 function totalSteps() {
-    return 9 + (setupConfig.uprrightsVisible ? 2 : 0);
+    // Scale×2 + BallBox×1 + (Uprights×2 optional) + halfUp + apex + halfDown + landing = 7 or 9
+    return 7 + (setupConfig.uprrightsVisible ? 2 : 0);
 }
 
 function currentStepIndex() {
+    // Steps: 0=scale1, 1=scale2, 2=ballBox, [3=uprightL, 4=uprightR], 3/5=halfUp, 4/6=apex, 5/7=halfDown, 6/8=landing
     let i = 0;
-    if (scaleDots.length > 0)   i = 1;
-    if (scaleDots.length > 1)   i = 2;
-    if (ballTeeDots.length > 0) i = 3;
-    if (ballTeeDots.length > 1) i = 4;
-    if (setupConfig.uprrightsVisible) {
-        if (uprightDots.length > 0 && ballTeeDots.length > 1) i = 5;
-        if (uprightDots.length > 1) i = 6;
-        if (startPt)    i = 7;
-        if (halfUpPt)   i = 8;
-        if (peakPt)     i = 9;
-        if (halfDownPt) i = 10;
-        if (endPt)      i = 11;
-    } else {
-        if (startPt)    i = 5;
-        if (halfUpPt)   i = 6;
-        if (peakPt)     i = 7;
-        if (halfDownPt) i = 8;
-        if (endPt)      i = 9;
+    if (scaleDots.length > 0) i = 1;
+    if (scaleDots.length > 1) i = 2;
+    if (startPt) { // ballBox confirmed sets startPt
+        if (setupConfig.uprrightsVisible) {
+            i = 3;
+            if (uprightDots.length > 0) i = 4;
+            if (uprightDots.length > 1) i = 5;
+            if (halfUpPt)   i = 6;
+            if (peakPt)     i = 7;
+            if (halfDownPt) i = 8;
+            if (endPt)      i = 9;
+        } else {
+            i = 3;
+            if (halfUpPt)   i = 4;
+            if (peakPt)     i = 5;
+            if (halfDownPt) i = 6;
+            if (endPt)      i = 7;
+        }
     }
     return i;
 }
@@ -876,16 +868,59 @@ function stepFrame(f) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Canvas tap
+//  Canvas pointer events — tap for dots, drag for ball box
 // ═══════════════════════════════════════════════════════════════════════
+function isBoxStep() {
+    // Returns true when the current step expects a bounding box drag
+    const i = currentStepIndex();
+    const hasU = setupConfig.uprrightsVisible;
+    // ballBox step is always step index 2 (after 2 scale dots)
+    return i === 2;
+}
+
 canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top)  / rect.height;
-    activeTap = { x, y };
-    if (zoomLevel > 1) zoomWrapper.style.transformOrigin = `${x*100}% ${y*100}%`;
-    updateWorkflow();
+    if (isBoxStep()) {
+        dragStart   = { x, y };
+        dragCurrent = { x, y };
+        activeTap   = null;
+    } else {
+        activeTap = { x, y };
+        dragStart = dragCurrent = null;
+        if (zoomLevel > 1) zoomWrapper.style.transformOrigin = `${x*100}% ${y*100}%`;
+        updateWorkflow();
+    }
     draw();
+});
+
+canvas.addEventListener('pointermove', e => {
+    if (!dragStart) return;
+    const rect = canvas.getBoundingClientRect();
+    dragCurrent = {
+        x: (e.clientX - rect.left) / rect.width,
+        y: (e.clientY - rect.top)  / rect.height,
+    };
+    draw();
+});
+
+canvas.addEventListener('pointerup', e => {
+    if (dragStart && dragCurrent) {
+        // Finalise box — store as normalised coords, ensure x1<x2, y1<y2
+        const x1 = Math.min(dragStart.x, dragCurrent.x);
+        const x2 = Math.max(dragStart.x, dragCurrent.x);
+        const y1 = Math.min(dragStart.y, dragCurrent.y);
+        const y2 = Math.max(dragStart.y, dragCurrent.y);
+        // Only accept if box is large enough to be intentional (>1% of canvas each side)
+        if ((x2 - x1) > 0.01 && (y2 - y1) > 0.01) {
+            ballBox = { x1, y1, x2, y2 };
+        }
+        dragStart = dragCurrent = null;
+        updateWorkflow();
+        draw();
+    }
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -942,19 +977,42 @@ function draw() {
         ctx.beginPath(); ctx.arc(p.x*w, p.y*h, dr, 0, Math.PI*2); ctx.fill();
     });
 
-    // Ball tee dots
-    ballTeeDots.forEach((p, i) => {
-        ctx.fillStyle = '#ff9500';
-        ctx.beginPath(); ctx.arc(p.x*w, p.y*h, dr, 0, Math.PI*2); ctx.fill();
-        ctx.font = `bold ${10*iz}px -apple-system,sans-serif`;
-        ctx.fillText(i===0 ? 'Ball Top' : 'Ball Bot', p.x*w + dr+2*iz, p.y*h + 4*iz);
-    });
-    if (ballTeeDots.length === 2) {
+    // Live drag box preview (while user is drawing)
+    if (dragStart && dragCurrent) {
+        const bx = Math.min(dragStart.x, dragCurrent.x) * w;
+        const by = Math.min(dragStart.y, dragCurrent.y) * h;
+        const bw = Math.abs(dragCurrent.x - dragStart.x) * w;
+        const bh = Math.abs(dragCurrent.y - dragStart.y) * h;
+        ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 2*iz;
+        ctx.setLineDash([4*iz, 3*iz]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255,149,0,0.1)';
+        ctx.fillRect(bx, by, bw, bh);
+    }
+
+    // Confirmed ball box
+    if (ballBox) {
+        const bx = ballBox.x1 * w;
+        const by = ballBox.y1 * h;
+        const bw = (ballBox.x2 - ballBox.x1) * w;
+        const bh = (ballBox.y2 - ballBox.y1) * h;
+        ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 2*iz;
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.fillStyle = 'rgba(255,149,0,0.1)';
+        ctx.fillRect(bx, by, bw, bh);
+        // Center crosshair
+        const cx2 = (ballBox.x1 + ballBox.x2) / 2 * w;
+        const cy2 = (ballBox.y1 + ballBox.y2) / 2 * h;
+        const len = 8*iz;
         ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 1.5*iz;
         ctx.beginPath();
-        ctx.moveTo(ballTeeDots[0].x*w, ballTeeDots[0].y*h);
-        ctx.lineTo(ballTeeDots[1].x*w, ballTeeDots[1].y*h);
+        ctx.moveTo(cx2-len, cy2); ctx.lineTo(cx2+len, cy2);
+        ctx.moveTo(cx2, cy2-len); ctx.lineTo(cx2, cy2+len);
         ctx.stroke();
+        ctx.fillStyle = '#ff9500';
+        ctx.font = `bold ${10*iz}px -apple-system,sans-serif`;
+        ctx.fillText('Ball', bx + 2*iz, by - 3*iz);
     }
 
     // Upright dots
@@ -1048,32 +1106,28 @@ function updateWorkflow() {
 // ═══════════════════════════════════════════════════════════════════════
 function undoLast() {
     const i = currentStepIndex();
-    const hasUprights = setupConfig.uprrightsVisible;
-    // Work backwards through confirmed state
-    if (!hasUprights) {
+    const hasU = setupConfig.uprrightsVisible;
+    if (!hasU) {
+        if      (i >= 7) endPt      = null;
+        else if (i === 6) halfDownPt = null;
+        else if (i === 5) peakPt     = null;
+        else if (i === 4) halfUpPt   = null;
+        else if (i === 3) { startPt = null; centerX = null; ballBox = null; ballTeePixelHeight = 0; }
+        else if (i === 2) scaleDots.pop();
+        else if (i === 1) scaleDots.pop();
+    } else {
         if      (i >= 9) endPt      = null;
         else if (i === 8) halfDownPt = null;
         else if (i === 7) peakPt     = null;
         else if (i === 6) halfUpPt   = null;
-        else if (i === 5) { startPt = null; centerX = null; }
-        else if (i === 4) { ballTeeDots.pop(); ballTeePixelHeight = 0; }
-        else if (i === 3) ballTeeDots.pop();
+        else if (i === 5) { uprightDots.pop(); }
+        else if (i === 4) { uprightDots.pop(); }
+        else if (i === 3) { startPt = null; centerX = null; ballBox = null; ballTeePixelHeight = 0; }
         else if (i === 2) scaleDots.pop();
         else if (i === 1) scaleDots.pop();
-    } else {
-        if      (i >= 11) endPt      = null;
-        else if (i === 10) halfDownPt = null;
-        else if (i === 9)  peakPt     = null;
-        else if (i === 8)  halfUpPt   = null;
-        else if (i === 7)  { startPt = null; centerX = null; }
-        else if (i === 6)  uprightDots.pop();
-        else if (i === 5)  uprightDots.pop();
-        else if (i === 4)  { ballTeeDots.pop(); ballTeePixelHeight = 0; }
-        else if (i === 3)  ballTeeDots.pop();
-        else if (i === 2)  scaleDots.pop();
-        else if (i === 1)  scaleDots.pop();
     }
     activeTap = null;
+    dragStart = dragCurrent = null;
     updateWorkflow();
     draw();
 }
@@ -1153,9 +1207,10 @@ function handleCalculateAndReport() {
 //  Reset
 // ═══════════════════════════════════════════════════════════════════════
 function resetAll() {
-    scaleDots = []; ballTeeDots = []; uprightDots = [];
+    scaleDots = []; ballBox = null; uprightDots = [];
     ballTeePixelHeight = 0;
-    activeTap = startPt = halfUpPt = peakPt = halfDownPt = endPt = null;
+    activeTap = dragStart = dragCurrent = null;
+    startPt = halfUpPt = peakPt = halfDownPt = endPt = null;
     centerX = null;
     zoomLevel = 1.0;
     zoomWrapper.style.transform = 'scale(1)';
