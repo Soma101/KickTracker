@@ -878,11 +878,22 @@ function isBoxStep() {
     return i === 2;
 }
 
+// Clamp normalized coords to [0,1] so taps/drags outside the video frame
+// are pinned to the edge and never produce out-of-bounds measurements.
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+function canvasCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: clamp01((e.clientX - rect.left) / rect.width),
+        y: clamp01((e.clientY - rect.top)  / rect.height),
+    };
+}
+
 canvas.addEventListener('pointerdown', e => {
     canvas.setPointerCapture(e.pointerId);
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top)  / rect.height;
+    const { x, y } = canvasCoords(e);
+    // Always update zoom origin on pointerdown regardless of step type
+    if (zoomLevel > 1) zoomWrapper.style.transformOrigin = `${x*100}% ${y*100}%`;
     if (isBoxStep()) {
         dragStart   = { x, y };
         dragCurrent = { x, y };
@@ -890,7 +901,6 @@ canvas.addEventListener('pointerdown', e => {
     } else {
         activeTap = { x, y };
         dragStart = dragCurrent = null;
-        if (zoomLevel > 1) zoomWrapper.style.transformOrigin = `${x*100}% ${y*100}%`;
         updateWorkflow();
     }
     draw();
@@ -898,17 +908,14 @@ canvas.addEventListener('pointerdown', e => {
 
 canvas.addEventListener('pointermove', e => {
     if (!dragStart) return;
-    const rect = canvas.getBoundingClientRect();
-    dragCurrent = {
-        x: (e.clientX - rect.left) / rect.width,
-        y: (e.clientY - rect.top)  / rect.height,
-    };
+    dragCurrent = canvasCoords(e);
     draw();
 });
 
 canvas.addEventListener('pointerup', e => {
     if (dragStart && dragCurrent) {
-        // Finalise box — store as normalised coords, ensure x1<x2, y1<y2
+        const { x, y } = canvasCoords(e);
+        dragCurrent = { x, y };
         const x1 = Math.min(dragStart.x, dragCurrent.x);
         const x2 = Math.max(dragStart.x, dragCurrent.x);
         const y1 = Math.min(dragStart.y, dragCurrent.y);
