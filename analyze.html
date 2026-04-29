@@ -98,7 +98,9 @@
             transform-origin: center center;
         }
         video { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
-        canvas { position: absolute; top: 0; left: 0; touch-action: none; }
+        /* Canvas is sized and positioned to cover ONLY the rendered video frame,
+           not the full video element box. Offset is set dynamically by resizeCanvas(). */
+        canvas { position: absolute; touch-action: none; }
         .upload-placeholder {
             position: absolute;
             top: 50%; left: 50%;
@@ -844,17 +846,41 @@ document.getElementById('file-upload').addEventListener('change', e => {
 // ═══════════════════════════════════════════════════════════════════════
 //  Canvas / DPI
 // ═══════════════════════════════════════════════════════════════════════
+// Computes the actual rendered video frame rect inside the video element.
+// object-fit:contain letterboxes/pillarboxes the video, so the true frame
+// is smaller than offsetWidth/offsetHeight and centered within it.
+function getRenderedFrameRect() {
+    const elW = video.offsetWidth;
+    const elH = video.offsetHeight;
+    const vidW = video.videoWidth  || elW;
+    const vidH = video.videoHeight || elH;
+    const elAspect  = elW / elH;
+    const vidAspect = vidW / vidH;
+    let frameW, frameH;
+    if (vidAspect > elAspect) {
+        // wider than container — letterboxed (black top/bottom)
+        frameW = elW;
+        frameH = elW / vidAspect;
+    } else {
+        // taller than container — pillarboxed (black left/right)
+        frameH = elH;
+        frameW = elH * vidAspect;
+    }
+    const frameLeft = (elW - frameW) / 2;
+    const frameTop  = (elH - frameH) / 2;
+    return { frameW, frameH, frameLeft, frameTop };
+}
+
 function resizeCanvas() {
     if (!isVideoLoaded) return;
-    // Use offsetWidth/offsetHeight — these reflect the unscaled layout size
-    // and are unaffected by CSS transforms unlike getBoundingClientRect().
-    const w = video.offsetWidth;
-    const h = video.offsetHeight;
+    const { frameW, frameH, frameLeft, frameTop } = getRenderedFrameRect();
     const dpr = window.devicePixelRatio || 1;
-    canvas.width  = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width  = w + 'px';
-    canvas.style.height = h + 'px';
+    canvas.width  = Math.round(frameW * dpr);
+    canvas.height = Math.round(frameH * dpr);
+    canvas.style.width  = frameW + 'px';
+    canvas.style.height = frameH + 'px';
+    canvas.style.left   = frameLeft + 'px';
+    canvas.style.top    = frameTop  + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener('resize', () => { resizeCanvas(); draw(); });
@@ -865,10 +891,21 @@ window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 document.getElementById('zoom-slider').addEventListener('input', e => {
     zoomLevel = parseFloat(e.target.value);
     document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
-    zoomWrapper.style.transform = `scale(${zoomLevel})`;
-    if (activeTap) zoomWrapper.style.transformOrigin = `${activeTap.x*100}% ${activeTap.y*100}%`;
+    applyZoom(zoomLevel, activeTap);
     draw();
 });
+
+// Applies cosmetic CSS zoom. origin is a {x,y} normalized coord (0-1)
+// or null to zoom from center. Zoom is purely visual — all tap data
+// is computed against the unscaled rendered frame, so no data is affected.
+function applyZoom(level, origin) {
+    zoomWrapper.style.transform = level === 1 ? '' : `scale(${level})`;
+    if (origin && level > 1) {
+        zoomWrapper.style.transformOrigin = `${origin.x*100}% ${origin.y*100}%`;
+    } else if (level === 1) {
+        zoomWrapper.style.transformOrigin = 'center center';
+    }
+}
 video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
 scrubber.addEventListener('input',  e => { isScrubbing = true;  video.currentTime = e.target.value; });
 scrubber.addEventListener('change', () => { isScrubbing = false; });
@@ -883,70 +920,91 @@ function stepFrame(f) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Canvas pointer events
+//  Canvas pointer events + pinch zoom
 // ═══════════════════════════════════════════════════════════════════════
 
-// Returns normalized [0,1] coords relative to the UNSCALED video.
-// Problem: when zoom is applied via CSS scale(), getBoundingClientRect()
-// returns the SCALED rect, so dividing by rect.width gives wrong coords.
-// Fix: get the unscaled video size via naturalWidth/naturalHeight ratio
-// applied to the unscaled layout size (offsetWidth/offsetHeight), then
-// compute coords relative to the unscaled origin.
-//
-// Also rejects taps that fall outside the viewport-container so the
-// black letterbox/pillarbox areas around the video are dead zones.
-function videoCoords(e) {
-    const cx = e.clientX, cy = e.clientY;
-
-    // Bounds check against viewport-container (never scaled) to reject
-    // taps on the black areas outside the video entirely.
-    const container = document.querySelector('.viewport-container');
-    const cRect = container.getBoundingClientRect();
-    if (cx < cRect.left || cx > cRect.right || cy < cRect.top || cy > cRect.bottom) {
-        return null;
-    }
-
-    // Unscaled video layout rect: offsetWidth/offsetHeight are not affected
-    // by CSS transforms, unlike getBoundingClientRect().
-    const unscaledW = video.offsetWidth;
-    const unscaledH = video.offsetHeight;
-
-    // Unscaled video origin in page coords:
-    // The zoom-wrapper is centered in the container. Its unscaled top-left is:
-    const wrapperRect = zoomWrapper.getBoundingClientRect();
-    // wrapperRect is the SCALED rect. Unscaled size = scaled / zoomLevel.
-    const scaledW = wrapperRect.width;
-    const scaledH = wrapperRect.height;
-    // Center of wrapper in page coords (invariant under scale since transform-origin can change)
-    // Use the container center instead — zoom origin may shift, but the wrapper
-    // is always centered in the container when zoomLevel = 1.
-    // When zoomed, the CSS scale is applied around transformOrigin, so the
-    // unscaled origin can be computed by reversing the scale:
-    //   unscaled_left = center_x - unscaledW / 2
-    // where center_x = wrapperRect.left + scaledW/2
-    const wrapCenterX = wrapperRect.left + scaledW / 2;
-    const wrapCenterY = wrapperRect.top  + scaledH / 2;
-    const unscaledLeft = wrapCenterX - unscaledW / 2;
-    const unscaledTop  = wrapCenterY - unscaledH / 2;
-
-    // Now map pointer to [0,1] relative to unscaled video
-    const x = (cx - unscaledLeft) / unscaledW;
-    const y = (cy - unscaledTop)  / unscaledH;
-
-    // Reject if outside unscaled video bounds (black bars)
+// The canvas is sized and positioned to cover ONLY the rendered video frame
+// (no black bars). So any pointer event on the canvas is guaranteed to be
+// within the frame. Normalized coords = pointer relative to canvas / canvas size.
+// This is independent of zoom level — zoom is purely CSS cosmetic.
+function frameCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    // getBoundingClientRect on the canvas returns the SCALED size when zoomed.
+    // Divide by zoomLevel to get back to the unscaled frame dimensions.
+    const scaledW = rect.width;
+    const scaledH = rect.height;
+    // Canvas origin in screen space (top-left of scaled canvas)
+    const x = (e.clientX - rect.left) / scaledW;
+    const y = (e.clientY - rect.top)  / scaledH;
     if (x < 0 || x > 1 || y < 0 || y > 1) return null;
-
     return { x, y };
 }
 
+// ── Single tap ───────────────────────────────────────────────────────────────
 canvas.addEventListener('pointerdown', e => {
-    const coords = videoCoords(e);
+    // Only handle single-finger taps (not part of a pinch)
+    if (e.isPrimary === false) return;
+    const coords = frameCoords(e);
     if (!coords) return;
     const { x, y } = coords;
-    if (zoomLevel > 1) zoomWrapper.style.transformOrigin = `${x*100}% ${y*100}%`;
+    // Update zoom origin so slider zoom focuses on tap point
+    applyZoom(zoomLevel, { x, y });
     activeTap = { x, y };
     updateWorkflow();
     draw();
+});
+
+// ── Pinch zoom ───────────────────────────────────────────────────────────────
+let pinchStartDist  = null;
+let pinchStartZoom  = 1;
+let pinchMidpoint   = null;
+
+function getPinchDist(e1, e2) {
+    const dx = e1.clientX - e2.clientX;
+    const dy = e1.clientY - e2.clientY;
+    return Math.sqrt(dx*dx + dy*dy);
+}
+
+const activePointers = new Map();
+
+canvas.addEventListener('pointerdown', e => {
+    activePointers.set(e.pointerId, e);
+    if (activePointers.size === 2) {
+        const pts = [...activePointers.values()];
+        pinchStartDist = getPinchDist(pts[0], pts[1]);
+        pinchStartZoom = zoomLevel;
+        // Zoom origin = midpoint of the two fingers in normalized frame coords
+        const r = canvas.getBoundingClientRect();
+        const mx = ((pts[0].clientX + pts[1].clientX) / 2 - r.left) / r.width;
+        const my = ((pts[0].clientY + pts[1].clientY) / 2 - r.top)  / r.height;
+        pinchMidpoint = { x: Math.max(0,Math.min(1,mx)), y: Math.max(0,Math.min(1,my)) };
+    }
+});
+
+canvas.addEventListener('pointermove', e => {
+    activePointers.set(e.pointerId, e);
+    if (activePointers.size === 2 && pinchStartDist !== null) {
+        const pts = [...activePointers.values()];
+        const dist = getPinchDist(pts[0], pts[1]);
+        const newZoom = Math.max(1, Math.min(10, pinchStartZoom * (dist / pinchStartDist)));
+        zoomLevel = newZoom;
+        document.getElementById('zoom-slider').value = newZoom;
+        document.getElementById('zoom-val').innerText = newZoom.toFixed(1) + 'x';
+        applyZoom(newZoom, pinchMidpoint);
+        draw();
+    }
+});
+
+canvas.addEventListener('pointerup', e => {
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) {
+        pinchStartDist = null;
+        pinchMidpoint  = null;
+    }
+});
+
+canvas.addEventListener('pointercancel', e => {
+    activePointers.delete(e.pointerId);
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -958,8 +1016,10 @@ function draw() {
     const h = canvas.clientHeight;
     ctx.clearRect(0, 0, w, h);
 
-    const iz = 1.0 / zoomLevel;
-    const dr = 6 * iz;
+    // Canvas is sized to the actual frame only — zoom is cosmetic CSS only.
+    // Draw at constant sizes regardless of zoom level.
+    const iz = 1.0;
+    const dr = 6;
 
     // Center reference line
     if (centerX !== null) {
