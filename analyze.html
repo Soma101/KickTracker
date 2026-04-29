@@ -846,12 +846,15 @@ document.getElementById('file-upload').addEventListener('change', e => {
 // ═══════════════════════════════════════════════════════════════════════
 function resizeCanvas() {
     if (!isVideoLoaded) return;
-    const rect = video.getBoundingClientRect();
-    const dpr  = window.devicePixelRatio || 1;
-    canvas.width  = rect.width  * dpr;
-    canvas.height = rect.height * dpr;
-    canvas.style.width  = rect.width  + 'px';
-    canvas.style.height = rect.height + 'px';
+    // Use offsetWidth/offsetHeight — these reflect the unscaled layout size
+    // and are unaffected by CSS transforms unlike getBoundingClientRect().
+    const w = video.offsetWidth;
+    const h = video.offsetHeight;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width  = w + 'px';
+    canvas.style.height = h + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener('resize', () => { resizeCanvas(); draw(); });
@@ -883,25 +886,62 @@ function stepFrame(f) {
 //  Canvas pointer events
 // ═══════════════════════════════════════════════════════════════════════
 
-// Returns normalized [0,1] coords clamped strictly to the video bounds.
-// Uses the video element's bounding rect (not canvas) so taps on the
-// letterbox/pillarbox black areas around the video are rejected.
+// Returns normalized [0,1] coords relative to the UNSCALED video.
+// Problem: when zoom is applied via CSS scale(), getBoundingClientRect()
+// returns the SCALED rect, so dividing by rect.width gives wrong coords.
+// Fix: get the unscaled video size via naturalWidth/naturalHeight ratio
+// applied to the unscaled layout size (offsetWidth/offsetHeight), then
+// compute coords relative to the unscaled origin.
+//
+// Also rejects taps that fall outside the viewport-container so the
+// black letterbox/pillarbox areas around the video are dead zones.
 function videoCoords(e) {
-    const vRect = video.getBoundingClientRect();
     const cx = e.clientX, cy = e.clientY;
-    // Reject taps outside the actual video element
-    if (cx < vRect.left || cx > vRect.right || cy < vRect.top || cy > vRect.bottom) {
+
+    // Bounds check against viewport-container (never scaled) to reject
+    // taps on the black areas outside the video entirely.
+    const container = document.querySelector('.viewport-container');
+    const cRect = container.getBoundingClientRect();
+    if (cx < cRect.left || cx > cRect.right || cy < cRect.top || cy > cRect.bottom) {
         return null;
     }
-    return {
-        x: (cx - vRect.left) / vRect.width,
-        y: (cy - vRect.top)  / vRect.height,
-    };
+
+    // Unscaled video layout rect: offsetWidth/offsetHeight are not affected
+    // by CSS transforms, unlike getBoundingClientRect().
+    const unscaledW = video.offsetWidth;
+    const unscaledH = video.offsetHeight;
+
+    // Unscaled video origin in page coords:
+    // The zoom-wrapper is centered in the container. Its unscaled top-left is:
+    const wrapperRect = zoomWrapper.getBoundingClientRect();
+    // wrapperRect is the SCALED rect. Unscaled size = scaled / zoomLevel.
+    const scaledW = wrapperRect.width;
+    const scaledH = wrapperRect.height;
+    // Center of wrapper in page coords (invariant under scale since transform-origin can change)
+    // Use the container center instead — zoom origin may shift, but the wrapper
+    // is always centered in the container when zoomLevel = 1.
+    // When zoomed, the CSS scale is applied around transformOrigin, so the
+    // unscaled origin can be computed by reversing the scale:
+    //   unscaled_left = center_x - unscaledW / 2
+    // where center_x = wrapperRect.left + scaledW/2
+    const wrapCenterX = wrapperRect.left + scaledW / 2;
+    const wrapCenterY = wrapperRect.top  + scaledH / 2;
+    const unscaledLeft = wrapCenterX - unscaledW / 2;
+    const unscaledTop  = wrapCenterY - unscaledH / 2;
+
+    // Now map pointer to [0,1] relative to unscaled video
+    const x = (cx - unscaledLeft) / unscaledW;
+    const y = (cy - unscaledTop)  / unscaledH;
+
+    // Reject if outside unscaled video bounds (black bars)
+    if (x < 0 || x > 1 || y < 0 || y > 1) return null;
+
+    return { x, y };
 }
 
 canvas.addEventListener('pointerdown', e => {
     const coords = videoCoords(e);
-    if (!coords) return; // tap was outside video — ignore
+    if (!coords) return;
     const { x, y } = coords;
     if (zoomLevel > 1) zoomWrapper.style.transformOrigin = `${x*100}% ${y*100}%`;
     activeTap = { x, y };
