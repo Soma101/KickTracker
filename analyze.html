@@ -923,19 +923,37 @@ function stepFrame(f) {
 //  Canvas pointer events + pinch zoom
 // ═══════════════════════════════════════════════════════════════════════
 
-// The canvas is sized and positioned to cover ONLY the rendered video frame
-// (no black bars). So any pointer event on the canvas is guaranteed to be
-// within the frame. Normalized coords = pointer relative to canvas / canvas size.
-// This is independent of zoom level — zoom is purely CSS cosmetic.
+// Returns normalized [0,1] coords within the rendered video frame.
+// Does NOT use getBoundingClientRect on the canvas or wrapper — those
+// return scaled values when CSS transform is applied and break with
+// non-center transform-origin. Instead we:
+//   1. Get the video element's unscaled page position via offsetLeft/offsetTop
+//      walked up the DOM (immune to CSS transforms).
+//   2. Add the rendered frame offset (letterbox/pillarbox correction).
+//   3. Subtract window scroll.
+// This gives the true unscaled frame origin in client coords, so
+// tap accuracy is completely independent of zoom level and origin.
+function getFrameOrigin() {
+    const { frameLeft, frameTop } = getRenderedFrameRect();
+    // Walk up DOM accumulating offsetLeft/offsetTop (unscaled layout positions)
+    let el = video;
+    let left = frameLeft, top = frameTop;
+    while (el) {
+        left += el.offsetLeft;
+        top  += el.offsetTop;
+        el = el.offsetParent;
+    }
+    // Subtract scroll
+    left -= window.scrollX;
+    top  -= window.scrollY;
+    return { left, top };
+}
+
 function frameCoords(e) {
-    const rect = canvas.getBoundingClientRect();
-    // getBoundingClientRect on the canvas returns the SCALED size when zoomed.
-    // Divide by zoomLevel to get back to the unscaled frame dimensions.
-    const scaledW = rect.width;
-    const scaledH = rect.height;
-    // Canvas origin in screen space (top-left of scaled canvas)
-    const x = (e.clientX - rect.left) / scaledW;
-    const y = (e.clientY - rect.top)  / scaledH;
+    const { frameW, frameH } = getRenderedFrameRect();
+    const { left, top } = getFrameOrigin();
+    const x = (e.clientX - left) / frameW;
+    const y = (e.clientY - top)  / frameH;
     if (x < 0 || x > 1 || y < 0 || y > 1) return null;
     return { x, y };
 }
@@ -974,9 +992,10 @@ canvas.addEventListener('pointerdown', e => {
         pinchStartDist = getPinchDist(pts[0], pts[1]);
         pinchStartZoom = zoomLevel;
         // Zoom origin = midpoint of the two fingers in normalized frame coords
-        const r = canvas.getBoundingClientRect();
-        const mx = ((pts[0].clientX + pts[1].clientX) / 2 - r.left) / r.width;
-        const my = ((pts[0].clientY + pts[1].clientY) / 2 - r.top)  / r.height;
+        const { frameW, frameH } = getRenderedFrameRect();
+        const { left: fLeft, top: fTop } = getFrameOrigin();
+        const mx = ((pts[0].clientX + pts[1].clientX) / 2 - fLeft) / frameW;
+        const my = ((pts[0].clientY + pts[1].clientY) / 2 - fTop)  / frameH;
         pinchMidpoint = { x: Math.max(0,Math.min(1,mx)), y: Math.max(0,Math.min(1,my)) };
     }
 });
@@ -1016,10 +1035,10 @@ function draw() {
     const h = canvas.clientHeight;
     ctx.clearRect(0, 0, w, h);
 
-    // Canvas is sized to the actual frame only — zoom is cosmetic CSS only.
-    // Draw at constant sizes regardless of zoom level.
-    const iz = 1.0;
-    const dr = 6;
+    // iz shrinks all drawn elements as zoom increases so they stay visually
+    // the same size on screen regardless of CSS zoom level.
+    const iz = 1.0 / zoomLevel;
+    const dr = 6 * iz;
 
     // Center reference line
     if (centerX !== null) {
