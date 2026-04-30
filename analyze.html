@@ -408,7 +408,7 @@
 </div>
 
 <!-- ── Viewport ──────────────────────────────────────────────────────── -->
-<div class="viewport-container">
+<div class="viewport-container" id="viewport-container">
     <div class="upload-placeholder" id="upload-placeholder"
          onclick="document.getElementById('file-upload').click()">
         Upload Video
@@ -417,6 +417,11 @@
         <video id="video-player" playsinline></video>
         <canvas id="overlay"></canvas>
     </div>
+    <!-- Hit area sits over entire container, never transformed, receives all taps -->
+    <div id="hit-overlay" style="
+        position:absolute; top:0; left:0; width:100%; height:100%;
+        z-index:10; touch-action:none; display:none;
+    "></div>
 </div>
 
 <!-- ── Controls ──────────────────────────────────────────────────────── -->
@@ -833,6 +838,7 @@ document.getElementById('file-upload').addEventListener('change', e => {
     video.load();
     video.onloadeddata = () => {
         document.getElementById('upload-placeholder').style.display = 'none';
+        document.getElementById('hit-overlay').style.display = 'block';
         zoomWrapper.style.display = 'inline-flex';
         document.getElementById('persistent-controls').style.display = 'flex';
         isVideoLoaded = true;
@@ -895,15 +901,23 @@ document.getElementById('zoom-slider').addEventListener('input', e => {
     draw();
 });
 
-// Applies cosmetic CSS zoom. origin is a {x,y} normalized coord (0-1)
-// or null to zoom from center. Zoom is purely visual — all tap data
-// is computed against the unscaled rendered frame, so no data is affected.
+// Applies cosmetic CSS zoom.
+// origin is {x,y} in normalized frame coords (0-1).
+// transform-origin must be in % of zoom-wrapper, not the frame,
+// so we convert: wrapperX = (frameLeft + x*frameW) / wrapperW
 function applyZoom(level, origin) {
     zoomWrapper.style.transform = level === 1 ? '' : `scale(${level})`;
-    if (origin && level > 1) {
-        zoomWrapper.style.transformOrigin = `${origin.x*100}% ${origin.y*100}%`;
-    } else if (level === 1) {
+    if (level === 1) {
         zoomWrapper.style.transformOrigin = 'center center';
+        return;
+    }
+    if (origin) {
+        const { frameW, frameH, frameLeft, frameTop } = getRenderedFrameRect();
+        const wW = zoomWrapper.offsetWidth  || 1;
+        const wH = zoomWrapper.offsetHeight || 1;
+        const ox = ((frameLeft + origin.x * frameW) / wW) * 100;
+        const oy = ((frameTop  + origin.y * frameH) / wH) * 100;
+        zoomWrapper.style.transformOrigin = `${ox}% ${oy}%`;
     }
 }
 video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
@@ -924,58 +938,34 @@ function stepFrame(f) {
 // ═══════════════════════════════════════════════════════════════════════
 
 // Returns normalized [0,1] coords within the rendered video frame.
-// Does NOT use getBoundingClientRect on the canvas or wrapper — those
-// return scaled values when CSS transform is applied and break with
-// non-center transform-origin. Instead we:
-//   1. Get the video element's unscaled page position via offsetLeft/offsetTop
-//      walked up the DOM (immune to CSS transforms).
-//   2. Add the rendered frame offset (letterbox/pillarbox correction).
-//   3. Subtract window scroll.
-// This gives the true unscaled frame origin in client coords, so
-// tap accuracy is completely independent of zoom level and origin.
-function getFrameOrigin() {
-    const { frameLeft, frameTop } = getRenderedFrameRect();
-    // Walk up DOM accumulating offsetLeft/offsetTop (unscaled layout positions)
-    let el = video;
-    let left = frameLeft, top = frameTop;
-    while (el) {
-        left += el.offsetLeft;
-        top  += el.offsetTop;
-        el = el.offsetParent;
-    }
-    // Subtract scroll
-    left -= window.scrollX;
-    top  -= window.scrollY;
-    return { left, top };
-}
-
+// Uses the hit-overlay div which covers the viewport-container and is
+// NEVER transformed — so getBoundingClientRect() always returns the
+// true unscaled position regardless of zoom level or transform-origin.
+// We then subtract the frame offset (letterbox/pillarbox) to get coords
+// relative to the actual video pixels only.
 function frameCoords(e) {
-    const { frameW, frameH } = getRenderedFrameRect();
-    const { left, top } = getFrameOrigin();
-    const x = (e.clientX - left) / frameW;
-    const y = (e.clientY - top)  / frameH;
+    const hitRect = document.getElementById('hit-overlay').getBoundingClientRect();
+    const { frameW, frameH, frameLeft, frameTop } = getRenderedFrameRect();
+
+    // Position of rendered frame within the container (unscaled)
+    // zoom-wrapper is centered in container, and video is centered in wrapper
+    // The frame offset from container top-left:
+    const wrapperOffsetX = (hitRect.width  - zoomWrapper.offsetWidth)  / 2;
+    const wrapperOffsetY = (hitRect.height - zoomWrapper.offsetHeight) / 2;
+    const frameOriginX = hitRect.left + wrapperOffsetX + frameLeft;
+    const frameOriginY = hitRect.top  + wrapperOffsetY + frameTop;
+
+    const x = (e.clientX - frameOriginX) / frameW;
+    const y = (e.clientY - frameOriginY) / frameH;
     if (x < 0 || x > 1 || y < 0 || y > 1) return null;
     return { x, y };
 }
 
-// ── Single tap ───────────────────────────────────────────────────────────────
-canvas.addEventListener('pointerdown', e => {
-    // Only handle single-finger taps (not part of a pinch)
-    if (e.isPrimary === false) return;
-    const coords = frameCoords(e);
-    if (!coords) return;
-    const { x, y } = coords;
-    // Update zoom origin so slider zoom focuses on tap point
-    applyZoom(zoomLevel, { x, y });
-    activeTap = { x, y };
-    updateWorkflow();
-    draw();
-});
-
-// ── Pinch zoom ───────────────────────────────────────────────────────────────
-let pinchStartDist  = null;
-let pinchStartZoom  = 1;
-let pinchMidpoint   = null;
+// ── Single tap + pinch zoom on hit-overlay (never transformed) ───────────────
+let pinchStartDist = null;
+let pinchStartZoom = 1;
+let pinchMidpoint  = null;
+const activePointers = new Map();
 
 function getPinchDist(e1, e2) {
     const dx = e1.clientX - e2.clientX;
@@ -983,24 +973,35 @@ function getPinchDist(e1, e2) {
     return Math.sqrt(dx*dx + dy*dy);
 }
 
-const activePointers = new Map();
+const hitOverlay = document.getElementById('hit-overlay');
 
-canvas.addEventListener('pointerdown', e => {
+hitOverlay.addEventListener('pointerdown', e => {
+    hitOverlay.setPointerCapture(e.pointerId);
     activePointers.set(e.pointerId, e);
+
     if (activePointers.size === 2) {
+        // Start pinch
         const pts = [...activePointers.values()];
         pinchStartDist = getPinchDist(pts[0], pts[1]);
         pinchStartZoom = zoomLevel;
-        // Zoom origin = midpoint of the two fingers in normalized frame coords
-        const { frameW, frameH } = getRenderedFrameRect();
-        const { left: fLeft, top: fTop } = getFrameOrigin();
-        const mx = ((pts[0].clientX + pts[1].clientX) / 2 - fLeft) / frameW;
-        const my = ((pts[0].clientY + pts[1].clientY) / 2 - fTop)  / frameH;
-        pinchMidpoint = { x: Math.max(0,Math.min(1,mx)), y: Math.max(0,Math.min(1,my)) };
+        // Pinch origin = midpoint in normalized frame coords
+        const mc = frameCoords({ clientX: (pts[0].clientX+pts[1].clientX)/2,
+                                  clientY: (pts[0].clientY+pts[1].clientY)/2 });
+        pinchMidpoint = mc || { x:0.5, y:0.5 };
+    } else if (activePointers.size === 1) {
+        // Single tap — place point
+        const coords = frameCoords(e);
+        if (!coords) return;
+        const { x, y } = coords;
+        // Update zoom origin to tap location
+        applyZoom(zoomLevel, { x, y });
+        activeTap = { x, y };
+        updateWorkflow();
+        draw();
     }
 });
 
-canvas.addEventListener('pointermove', e => {
+hitOverlay.addEventListener('pointermove', e => {
     activePointers.set(e.pointerId, e);
     if (activePointers.size === 2 && pinchStartDist !== null) {
         const pts = [...activePointers.values()];
@@ -1014,7 +1015,7 @@ canvas.addEventListener('pointermove', e => {
     }
 });
 
-canvas.addEventListener('pointerup', e => {
+hitOverlay.addEventListener('pointerup', e => {
     activePointers.delete(e.pointerId);
     if (activePointers.size < 2) {
         pinchStartDist = null;
@@ -1022,7 +1023,7 @@ canvas.addEventListener('pointerup', e => {
     }
 });
 
-canvas.addEventListener('pointercancel', e => {
+hitOverlay.addEventListener('pointercancel', e => {
     activePointers.delete(e.pointerId);
 });
 
