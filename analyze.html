@@ -85,22 +85,23 @@
             min-height: 0;
             position: relative;
             overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             background: #000;
         }
-        .zoom-wrapper {
-            position: relative;
-            display: inline-flex;
-            max-width: 100%;
-            max-height: 100%;
-            transform-origin: center center;
+        /* video is hidden — we draw it onto canvas ourselves */
+        video { display: none; }
+        /* canvas fills the entire viewport container */
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
         }
-        video { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
-        /* Canvas is sized and positioned to cover ONLY the rendered video frame,
-           not the full video element box. Offset is set dynamically by resizeCanvas(). */
-        canvas { position: absolute; touch-action: none; }
+        /* zoom-wrapper is just a passthrough container now */
+        .zoom-wrapper {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+        }
         .upload-placeholder {
             position: absolute;
             top: 50%; left: 50%;
@@ -113,6 +114,7 @@
             border: 2px dashed #3a3a3c;
             padding: 30px;
             border-radius: 12px;
+            z-index: 5;
         }
 
         /* ── Controls ── */
@@ -417,11 +419,7 @@
         <video id="video-player" playsinline></video>
         <canvas id="overlay"></canvas>
     </div>
-    <!-- Hit area sits over entire container, never transformed, receives all taps -->
-    <div id="hit-overlay" style="
-        position:absolute; top:0; left:0; width:100%; height:100%;
-        z-index:10; touch-action:none; display:none;
-    "></div>
+
 </div>
 
 <!-- ── Controls ──────────────────────────────────────────────────────── -->
@@ -533,7 +531,13 @@ const statusText  = document.getElementById('status-text');
 // ═══════════════════════════════════════════════════════════════════════
 let isVideoLoaded     = false;
 let isScrubbing       = false;
-let zoomLevel         = 1.0;
+// Canvas-space camera (like the example — no CSS transforms)
+let camScale  = 1.0;   // current zoom level
+let camX      = 0;     // canvas offset X (pixels)
+let camY      = 0;     // canvas offset Y (pixels)
+let imgW      = 0;     // native video width (set on load)
+let imgH      = 0;     // native video height (set on load)
+const zoomLevel = { get value() { return camScale; } }; // shim for legacy refs
 
 let scaleDots          = [];
 let ballTeeDots        = [];    // [topTap, bottomTap] normalized coords
@@ -838,85 +842,107 @@ document.getElementById('file-upload').addEventListener('change', e => {
     video.load();
     video.onloadeddata = () => {
         document.getElementById('upload-placeholder').style.display = 'none';
-        document.getElementById('hit-overlay').style.display = 'block';
-        zoomWrapper.style.display = 'inline-flex';
         document.getElementById('persistent-controls').style.display = 'flex';
         isVideoLoaded = true;
+        imgW = video.videoWidth;
+        imgH = video.videoHeight;
         scrubber.max = video.duration;
-        resizeCanvas();
+        resizeCanvas(); // sizes canvas, calls fitVideoToCanvas
         // Show setup popup for each new video
         openSetup();
     };
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Canvas / DPI
+//  Canvas sizing — fills viewport-container at device pixel ratio
 // ═══════════════════════════════════════════════════════════════════════
-// Computes the actual rendered video frame rect inside the video element.
-// object-fit:contain letterboxes/pillarboxes the video, so the true frame
-// is smaller than offsetWidth/offsetHeight and centered within it.
-function getRenderedFrameRect() {
-    const elW = video.offsetWidth;
-    const elH = video.offsetHeight;
-    const vidW = video.videoWidth  || elW;
-    const vidH = video.videoHeight || elH;
-    const elAspect  = elW / elH;
-    const vidAspect = vidW / vidH;
-    let frameW, frameH;
-    if (vidAspect > elAspect) {
-        // wider than container — letterboxed (black top/bottom)
-        frameW = elW;
-        frameH = elW / vidAspect;
-    } else {
-        // taller than container — pillarboxed (black left/right)
-        frameH = elH;
-        frameW = elH * vidAspect;
-    }
-    const frameLeft = (elW - frameW) / 2;
-    const frameTop  = (elH - frameH) / 2;
-    return { frameW, frameH, frameLeft, frameTop };
-}
-
 function resizeCanvas() {
-    if (!isVideoLoaded) return;
-    const { frameW, frameH, frameLeft, frameTop } = getRenderedFrameRect();
+    const container = document.querySelector('.viewport-container');
     const dpr = window.devicePixelRatio || 1;
-    canvas.width  = Math.round(frameW * dpr);
-    canvas.height = Math.round(frameH * dpr);
-    canvas.style.width  = frameW + 'px';
-    canvas.style.height = frameH + 'px';
-    canvas.style.left   = frameLeft + 'px';
-    canvas.style.top    = frameTop  + 'px';
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    canvas.width  = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width  = w + 'px';
+    canvas.style.height = h + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (isVideoLoaded) fitVideoToCanvas();
 }
 window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+
+// Fit video into canvas (like object-fit:contain), reset camera
+function fitVideoToCanvas() {
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    const scaleX = cw / imgW;
+    const scaleY = ch / imgH;
+    camScale = Math.min(scaleX, scaleY);
+    camX = (cw - imgW * camScale) / 2;
+    camY = (ch - imgH * camScale) / 2;
+    syncZoomSlider();
+}
+
+function syncZoomSlider() {
+    // Slider represents zoom relative to fit-scale (1x = fitted)
+    const fitScale = getFitScale();
+    const relZoom = camScale / fitScale;
+    document.getElementById('zoom-slider').value = Math.max(1, Math.min(10, relZoom));
+    document.getElementById('zoom-val').innerText = relZoom.toFixed(1) + 'x';
+}
+
+function getFitScale() {
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    return Math.min(cw / (imgW||1), ch / (imgH||1));
+}
+
+// Convert screen (canvas client) coords → normalized image coords [0,1]
+function screenToNorm(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = clientX - rect.left;
+    const sy = clientY - rect.top;
+    const ix = (sx - camX) / camScale;
+    const iy = (sy - camY) / camScale;
+    // Reject if outside image bounds
+    if (ix < 0 || ix > imgW || iy < 0 || iy > imgH) return null;
+    return { x: ix / imgW, y: iy / imgH };
+}
+
+// Convert normalized image coords [0,1] → canvas client coords
+function normToScreen(nx, ny) {
+    return {
+        x: nx * imgW * camScale + camX,
+        y: ny * imgH * camScale + camY,
+    };
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Playback
 // ═══════════════════════════════════════════════════════════════════════
 document.getElementById('zoom-slider').addEventListener('input', e => {
-    zoomLevel = parseFloat(e.target.value);
-    document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
-    applyZoom(zoomLevel);
+    const relZoom = parseFloat(e.target.value);
+    document.getElementById('zoom-val').innerText = relZoom.toFixed(1) + 'x';
+    // Zoom around center of canvas
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    zoomAround(cw/2, ch/2, relZoom * getFitScale());
     draw();
 });
 
-// Applies cosmetic CSS zoom.
-// origin is {x,y} in normalized frame coords (0-1).
-// transform-origin must be in % of zoom-wrapper, not the frame,
-// so we convert: wrapperX = (frameLeft + x*frameW) / wrapperW
-function applyZoom(level) {
-    zoomWrapper.style.transform = level === 1
-        ? ''
-        : `scale(${level})`;
-
-    // IMPORTANT: lock origin so geometry does NOT shift
-    zoomWrapper.style.transformOrigin = 'center center';
+// Zoom to newScale keeping screen point (sx,sy) fixed in image space
+function zoomAround(sx, sy, newScale) {
+    const ix = (sx - camX) / camScale;
+    const iy = (sy - camY) / camScale;
+    camScale = Math.max(getFitScale(), newScale);
+    camX = sx - ix * camScale;
+    camY = sy - iy * camScale;
+    syncZoomSlider();
 }
-
-video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
-scrubber.addEventListener('input',  e => { isScrubbing = true;  video.currentTime = e.target.value; });
-scrubber.addEventListener('change', () => { isScrubbing = false; });
+video.addEventListener('timeupdate', () => {
+    if (!isScrubbing) scrubber.value = video.currentTime;
+    draw(); // redraw frame on every timeupdate
+});
+scrubber.addEventListener('input',  e => { isScrubbing = true;  video.currentTime = e.target.value; draw(); });
+scrubber.addEventListener('change', () => { isScrubbing = false; draw(); });
 function togglePlay() {
     if (video.paused) { video.play();  document.getElementById('btn-playpause').innerText = '⏸'; }
     else              { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; }
@@ -931,91 +957,94 @@ function stepFrame(f) {
 //  Canvas pointer events + pinch zoom
 // ═══════════════════════════════════════════════════════════════════════
 
-// Returns normalized [0,1] coords within the rendered video frame.
-// Uses the hit-overlay div which covers the viewport-container and is
-// NEVER transformed — so getBoundingClientRect() always returns the
-// true unscaled position regardless of zoom level or transform-origin.
-// We then subtract the frame offset (letterbox/pillarbox) to get coords
-// relative to the actual video pixels only.
-function frameCoords(e) {
-    const hitRect = document.getElementById('hit-overlay').getBoundingClientRect();
-    const { frameW, frameH, frameLeft, frameTop } = getRenderedFrameRect();
-
-    // Position of rendered frame within the container (unscaled)
-    // zoom-wrapper is centered in container, and video is centered in wrapper
-    // The frame offset from container top-left:
-    const wrapperOffsetX = (hitRect.width  - zoomWrapper.offsetWidth)  / 2;
-    const wrapperOffsetY = (hitRect.height - zoomWrapper.offsetHeight) / 2;
-    const frameOriginX = hitRect.left + wrapperOffsetX + frameLeft;
-    const frameOriginY = hitRect.top  + wrapperOffsetY + frameTop;
-
-    const x = (e.clientX - frameOriginX) / frameW;
-    const y = (e.clientY - frameOriginY) / frameH;
-    if (x < 0 || x > 1 || y < 0 || y > 1) return null;
-    return { x, y };
-}
-
-// ── Single tap + pinch zoom on hit-overlay (never transformed) ───────────────
-let pinchStartDist = null;
-let pinchStartZoom = 1;
+// ═══════════════════════════════════════════════════════════════════════
+//  Pointer events — tap to place, pinch to zoom (canvas-space transforms)
+// ═══════════════════════════════════════════════════════════════════════
+let pinchStartDist  = null;
+let pinchStartScale = 1;
+let pinchStartCamX  = 0;
+let pinchStartCamY  = 0;
 const activePointers = new Map();
+let pointerDownTime  = 0;
+let pointerDownPos   = null;
+let pointerMoved     = false;
 
 function getPinchDist(e1, e2) {
-    const dx = e1.clientX - e2.clientX;
-    const dy = e1.clientY - e2.clientY;
-    return Math.sqrt(dx*dx + dy*dy);
+    return Math.hypot(e1.clientX - e2.clientX, e1.clientY - e2.clientY);
+}
+function getPinchMid(e1, e2) {
+    return { x: (e1.clientX + e2.clientX) / 2, y: (e1.clientY + e2.clientY) / 2 };
 }
 
-const hitOverlay = document.getElementById('hit-overlay');
-
-hitOverlay.addEventListener('pointerdown', e => {
-    hitOverlay.setPointerCapture(e.pointerId);
+canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
     activePointers.set(e.pointerId, e);
+    pointerMoved = false;
 
     if (activePointers.size === 2) {
-        // Start pinch
         const pts = [...activePointers.values()];
-        pinchStartDist = getPinchDist(pts[0], pts[1]);
-        pinchStartZoom = zoomLevel;
-        // Pinch origin = midpoint in normalized frame coords
-        const mc = frameCoords({ clientX: (pts[0].clientX+pts[1].clientX)/2,
-                                  clientY: (pts[0].clientY+pts[1].clientY)/2 });
+        pinchStartDist  = getPinchDist(pts[0], pts[1]);
+        pinchStartScale = camScale;
+        pinchStartCamX  = camX;
+        pinchStartCamY  = camY;
     } else if (activePointers.size === 1) {
-        // Single tap — place point
-        const coords = frameCoords(e);
-        if (!coords) return;
-        const { x, y } = coords;
-        // Update zoom origin to tap location
-        applyZoom(zoomLevel, { x, y });
-        activeTap = { x, y };
-        updateWorkflow();
-        draw();
+        pointerDownTime = Date.now();
+        pointerDownPos  = { x: e.clientX, y: e.clientY };
     }
 });
 
-hitOverlay.addEventListener('pointermove', e => {
+canvas.addEventListener('pointermove', e => {
+    if (!activePointers.has(e.pointerId)) return;
     activePointers.set(e.pointerId, e);
+
     if (activePointers.size === 2 && pinchStartDist !== null) {
         const pts = [...activePointers.values()];
         const dist = getPinchDist(pts[0], pts[1]);
-        const newZoom = Math.max(1, Math.min(10, pinchStartZoom * (dist / pinchStartDist)));
-        zoomLevel = newZoom;
-        document.getElementById('zoom-slider').value = newZoom;
-        document.getElementById('zoom-val').innerText = newZoom.toFixed(1) + 'x';
-        applyZoom(newZoom);
+        const mid  = getPinchMid(pts[0], pts[1]);
+        const rect = canvas.getBoundingClientRect();
+        const sx = mid.x - rect.left;
+        const sy = mid.y - rect.top;
+
+        const newScale = Math.max(getFitScale(), Math.min(getFitScale()*10, pinchStartScale * (dist / pinchStartDist)));
+        // Keep midpoint fixed in image space
+        const ix = (sx - pinchStartCamX) / pinchStartScale;
+        const iy = (sy - pinchStartCamY) / pinchStartScale;
+        camScale = newScale;
+        camX = sx - ix * camScale;
+        camY = sy - iy * camScale;
+        syncZoomSlider();
         draw();
+        pointerMoved = true;
+    } else if (activePointers.size === 1 && pointerDownPos) {
+        const dx = e.clientX - pointerDownPos.x;
+        const dy = e.clientY - pointerDownPos.y;
+        if (Math.hypot(dx, dy) > 8) pointerMoved = true;
     }
 });
 
-hitOverlay.addEventListener('pointerup', e => {
+canvas.addEventListener('pointerup', e => {
+    const wasSingleFinger = activePointers.size === 1;
     activePointers.delete(e.pointerId);
+
     if (activePointers.size < 2) {
         pinchStartDist = null;
     }
+
+    // Treat as a tap only if single finger, short duration, and didn't move
+    if (wasSingleFinger && !pointerMoved && (Date.now() - pointerDownTime) < 400) {
+        const coords = screenToNorm(e.clientX, e.clientY);
+        if (coords) {
+            activeTap = coords;
+            updateWorkflow();
+            draw();
+        }
+    }
+    pointerDownPos = null;
 });
 
-hitOverlay.addEventListener('pointercancel', e => {
+canvas.addEventListener('pointercancel', e => {
     activePointers.delete(e.pointerId);
+    pinchStartDist = null;
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1027,73 +1056,70 @@ function draw() {
     const h = canvas.clientHeight;
     ctx.clearRect(0, 0, w, h);
 
-    // iz shrinks all drawn elements as zoom increases so they stay visually
-    // the same size on screen regardless of CSS zoom level.
-    const iz = 1.0 / zoomLevel;
-    const dr = 6 * iz;
+    // Draw video frame at current camera transform
+    ctx.drawImage(video, camX, camY, imgW * camScale, imgH * camScale);
+
+    // All markers use normToScreen() to convert stored [0,1] coords to canvas pixels.
+    // Dot size stays constant on screen regardless of zoom.
+    const dr = 6;
 
     // Center reference line
     if (centerX !== null) {
+        const cx = normToScreen(centerX, 0).x;
         ctx.save();
         ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-        ctx.lineWidth = 1.5 * iz;
-        ctx.setLineDash([8*iz, 6*iz]);
-        ctx.beginPath(); ctx.moveTo(centerX*w, 0); ctx.lineTo(centerX*w, h);
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
         ctx.stroke(); ctx.setLineDash([]); ctx.restore();
     }
 
-    // Upright reference lines (if tapped)
+    // Upright reference lines
     if (uprightDots.length === 2) {
-        const lx = uprightDots[0].x * w;
-        const rx = uprightDots[1].x * w;
+        const lx = normToScreen(uprightDots[0].x, 0).x;
+        const rx = normToScreen(uprightDots[1].x, 0).x;
         ctx.save();
         ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = 1.5 * iz;
-        ctx.setLineDash([6*iz, 4*iz]);
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
         [lx, rx].forEach(x => {
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
         });
         ctx.setLineDash([]); ctx.restore();
-        // label
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.font = `bold ${10*iz}px -apple-system,sans-serif`;
-        ctx.fillText('L Post', lx + 3*iz, 14*iz);
-        ctx.fillText('R Post', rx + 3*iz, 14*iz);
+        ctx.font = 'bold 10px -apple-system,sans-serif';
+        ctx.fillText('L Post', lx + 3, 14);
+        ctx.fillText('R Post', rx + 3, 14);
     }
 
     // Scale line
     if (scaleDots.length === 2) {
-        ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2*iz;
-        ctx.beginPath();
-        ctx.moveTo(scaleDots[0].x*w, scaleDots[0].y*h);
-        ctx.lineTo(scaleDots[1].x*w, scaleDots[1].y*h);
-        ctx.stroke();
+        const s0 = normToScreen(scaleDots[0].x, scaleDots[0].y);
+        const s1 = normToScreen(scaleDots[1].x, scaleDots[1].y);
+        ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(s0.x, s0.y); ctx.lineTo(s1.x, s1.y); ctx.stroke();
     }
     ctx.fillStyle = '#007aff';
     scaleDots.forEach(p => {
-        ctx.beginPath(); ctx.arc(p.x*w, p.y*h, dr, 0, Math.PI*2); ctx.fill();
+        const s = normToScreen(p.x, p.y);
+        ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
     });
 
-    // Ball tee dots (top + bottom) with connecting line and midpoint cross
+    // Ball tee dots
     ballTeeDots.forEach((p, i) => {
+        const s = normToScreen(p.x, p.y);
         ctx.fillStyle = '#ff9500';
-        ctx.beginPath(); ctx.arc(p.x*w, p.y*h, dr, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#ff9500';
-        ctx.font = `bold ${10*iz}px -apple-system,sans-serif`;
-        ctx.fillText(i===0 ? 'Ball Top' : 'Ball Bot', p.x*w + dr+2*iz, p.y*h + 4*iz);
+        ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
+        ctx.font = 'bold 10px -apple-system,sans-serif';
+        ctx.fillText(i===0 ? 'Ball Top' : 'Ball Bot', s.x + dr+2, s.y + 4);
     });
     if (ballTeeDots.length === 2) {
-        // Line between top and bottom
-        ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 1.5*iz;
-        ctx.beginPath();
-        ctx.moveTo(ballTeeDots[0].x*w, ballTeeDots[0].y*h);
-        ctx.lineTo(ballTeeDots[1].x*w, ballTeeDots[1].y*h);
-        ctx.stroke();
-        // Midpoint crosshair = impact position
-        const mx = (ballTeeDots[0].x + ballTeeDots[1].x) / 2 * w;
-        const my = (ballTeeDots[0].y + ballTeeDots[1].y) / 2 * h;
-        const len = 8 * iz;
-        ctx.strokeStyle = '#34c759'; ctx.lineWidth = 1.5*iz;
+        const s0 = normToScreen(ballTeeDots[0].x, ballTeeDots[0].y);
+        const s1 = normToScreen(ballTeeDots[1].x, ballTeeDots[1].y);
+        ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(s0.x, s0.y); ctx.lineTo(s1.x, s1.y); ctx.stroke();
+        const mx = (s0.x + s1.x) / 2, my = (s0.y + s1.y) / 2, len = 8;
+        ctx.strokeStyle = '#34c759'; ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(mx-len, my); ctx.lineTo(mx+len, my);
         ctx.moveTo(mx, my-len); ctx.lineTo(mx, my+len);
@@ -1101,32 +1127,34 @@ function draw() {
     }
 
     // Upright dots
-    uprightDots.forEach((p, i) => {
+    uprightDots.forEach(p => {
+        const s = normToScreen(p.x, p.y);
         ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.arc(p.x*w, p.y*h, dr, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
     });
 
     // Active tap crosshair
     if (activeTap) {
-        const px=activeTap.x*w, py=activeTap.y*h, len=12*iz;
-        ctx.strokeStyle='#ffff00'; ctx.lineWidth=2.5*iz;
+        const s = normToScreen(activeTap.x, activeTap.y);
+        ctx.strokeStyle='#ffff00'; ctx.lineWidth=2.5;
         ctx.beginPath();
-        ctx.moveTo(px,py-len); ctx.lineTo(px,py+len);
-        ctx.moveTo(px-len,py); ctx.lineTo(px+len,py);
+        ctx.moveTo(s.x,s.y-12); ctx.lineTo(s.x,s.y+12);
+        ctx.moveTo(s.x-12,s.y); ctx.lineTo(s.x+12,s.y);
         ctx.stroke();
     }
 
     // Trajectory markers
     const drawMarker = (pt, color, label, isNorm) => {
         if (!pt) return;
-        const px = isNorm ? (pt.pos.x - 0.5 + (centerX||0.5))*w : pt.pos.x*w;
-        const py = pt.pos.y * h;
+        const nx = isNorm ? pt.pos.x - 0.5 + (centerX||0.5) : pt.pos.x;
+        const ny = pt.pos.y;
+        const s = normToScreen(nx, ny);
         ctx.fillStyle = color;
-        ctx.beginPath(); ctx.arc(px, py, dr, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
         if (label) {
             ctx.fillStyle = color;
-            ctx.font = `bold ${11*iz}px -apple-system,sans-serif`;
-            ctx.fillText(label, px+dr+2*iz, py+4*iz);
+            ctx.font = 'bold 11px -apple-system,sans-serif';
+            ctx.fillText(label, s.x+dr+2, s.y+4);
         }
     };
     drawMarker(startPt,    '#34c759', 'Impact',  false);
@@ -1136,16 +1164,16 @@ function draw() {
     drawMarker(endPt,      '#ff3b30', 'Landing',  true);
 
     // Trajectory curve
-    const pts = [startPt, halfUpPt, peakPt, halfDownPt, endPt].filter(Boolean).map(pt => ({
-        x: (pt !== startPt) ? (pt.pos.x - 0.5 + (centerX||0.5))*w : pt.pos.x*w,
-        y: pt.pos.y * h
-    }));
-    if (pts.length >= 2) {
+    const tpts = [startPt, halfUpPt, peakPt, halfDownPt, endPt].filter(Boolean).map(pt => {
+        const nx = (pt !== startPt) ? pt.pos.x - 0.5 + (centerX||0.5) : pt.pos.x;
+        return normToScreen(nx, pt.pos.y);
+    });
+    if (tpts.length >= 2) {
         ctx.strokeStyle = 'rgba(255,200,0,0.6)';
-        ctx.lineWidth = 2*iz;
-        ctx.setLineDash([5*iz, 4*iz]);
-        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
-        pts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.moveTo(tpts[0].x, tpts[0].y);
+        tpts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
         ctx.stroke(); ctx.setLineDash([]);
     }
 }
@@ -1298,10 +1326,7 @@ function resetAll() {
     activeTap = null;
     startPt = halfUpPt = peakPt = halfDownPt = endPt = null;
     centerX = null;
-    zoomLevel = 1.0;
-    zoomWrapper.style.transform = 'scale(1)';
-    document.getElementById('zoom-slider').value = 1;
-    document.getElementById('zoom-val').innerText = '1x';
+    fitVideoToCanvas(); // resets camScale/camX/camY to fit
     if (isVideoLoaded) { video.pause(); video.currentTime = 0; scrubber.value = 0; }
     rebuildProgressDots();
     updateWorkflow();
