@@ -897,7 +897,7 @@ window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 document.getElementById('zoom-slider').addEventListener('input', e => {
     zoomLevel = parseFloat(e.target.value);
     document.getElementById('zoom-val').innerText = zoomLevel.toFixed(1) + 'x';
-    applyZoom(zoomLevel, activeTap);
+    applyZoom(zoomLevel);
     draw();
 });
 
@@ -905,21 +905,15 @@ document.getElementById('zoom-slider').addEventListener('input', e => {
 // origin is {x,y} in normalized frame coords (0-1).
 // transform-origin must be in % of zoom-wrapper, not the frame,
 // so we convert: wrapperX = (frameLeft + x*frameW) / wrapperW
-function applyZoom(level, origin) {
-    zoomWrapper.style.transform = level === 1 ? '' : `scale(${level})`;
-    if (level === 1) {
-        zoomWrapper.style.transformOrigin = 'center center';
-        return;
-    }
-    if (origin) {
-        const { frameW, frameH, frameLeft, frameTop } = getRenderedFrameRect();
-        const wW = zoomWrapper.offsetWidth  || 1;
-        const wH = zoomWrapper.offsetHeight || 1;
-        const ox = ((frameLeft + origin.x * frameW) / wW) * 100;
-        const oy = ((frameTop  + origin.y * frameH) / wH) * 100;
-        zoomWrapper.style.transformOrigin = `${ox}% ${oy}%`;
-    }
+function applyZoom(level) {
+    zoomWrapper.style.transform = level === 1
+        ? ''
+        : `scale(${level})`;
+
+    // IMPORTANT: lock origin so geometry does NOT shift
+    zoomWrapper.style.transformOrigin = 'center center';
 }
+
 video.addEventListener('timeupdate', () => { if (!isScrubbing) scrubber.value = video.currentTime; });
 scrubber.addEventListener('input',  e => { isScrubbing = true;  video.currentTime = e.target.value; });
 scrubber.addEventListener('change', () => { isScrubbing = false; });
@@ -964,7 +958,6 @@ function frameCoords(e) {
 // ── Single tap + pinch zoom on hit-overlay (never transformed) ───────────────
 let pinchStartDist = null;
 let pinchStartZoom = 1;
-let pinchMidpoint  = null;
 const activePointers = new Map();
 
 function getPinchDist(e1, e2) {
@@ -987,7 +980,6 @@ hitOverlay.addEventListener('pointerdown', e => {
         // Pinch origin = midpoint in normalized frame coords
         const mc = frameCoords({ clientX: (pts[0].clientX+pts[1].clientX)/2,
                                   clientY: (pts[0].clientY+pts[1].clientY)/2 });
-        pinchMidpoint = mc || { x:0.5, y:0.5 };
     } else if (activePointers.size === 1) {
         // Single tap — place point
         const coords = frameCoords(e);
@@ -1010,7 +1002,7 @@ hitOverlay.addEventListener('pointermove', e => {
         zoomLevel = newZoom;
         document.getElementById('zoom-slider').value = newZoom;
         document.getElementById('zoom-val').innerText = newZoom.toFixed(1) + 'x';
-        applyZoom(newZoom, pinchMidpoint);
+        applyZoom(newZoom);
         draw();
     }
 });
@@ -1019,7 +1011,6 @@ hitOverlay.addEventListener('pointerup', e => {
     activePointers.delete(e.pointerId);
     if (activePointers.size < 2) {
         pinchStartDist = null;
-        pinchMidpoint  = null;
     }
 });
 
