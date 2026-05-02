@@ -1,6 +1,6 @@
-console.log("KickTracker build:", "v1.2.0");
+console.log("KickTracker build:", "v1.2.1");
 
-document.getElementById('app-version').textContent = "v1.2.0";
+document.getElementById('app-version').textContent = "v1.2.1";
 
 document.getElementById('btn-record').addEventListener('click', () => {
     window.location.href = 'camera.html';
