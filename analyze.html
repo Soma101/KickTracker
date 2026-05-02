@@ -92,16 +92,13 @@
         /* canvas fills the entire viewport container */
         canvas {
             display: block;
+            position: absolute;
+            top: 0; left: 0;
             width: 100%;
             height: 100%;
             touch-action: none;
         }
-        /* zoom-wrapper is just a passthrough container now */
-        .zoom-wrapper {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-        }
+        /* zoom-wrapper removed — canvas fills container directly */
         .upload-placeholder {
             position: absolute;
             top: 50%; left: 50%;
@@ -415,11 +412,10 @@
          onclick="document.getElementById('file-upload').click()">
         Upload Video
     </div>
-    <div class="zoom-wrapper" id="zoom-wrapper" style="display:none;">
-        <video id="video-player" playsinline></video>
-        <canvas id="overlay"></canvas>
-    </div>
-
+    <!-- video is hidden, drawn onto canvas manually -->
+    <video id="video-player" playsinline style="display:none;"></video>
+    <!-- canvas fills container, hidden until video loads -->
+    <canvas id="overlay" style="display:none;"></canvas>
 </div>
 
 <!-- ── Controls ──────────────────────────────────────────────────────── -->
@@ -522,7 +518,7 @@ let setupConfig = {
 const video       = document.getElementById('video-player');
 const canvas      = document.getElementById('overlay');
 const ctx         = canvas.getContext('2d');
-const zoomWrapper = document.getElementById('zoom-wrapper');
+const zoomWrapper = null; // removed — canvas fills container directly
 const scrubber    = document.getElementById('scrubber');
 const statusText  = document.getElementById('status-text');
 
@@ -842,6 +838,7 @@ document.getElementById('file-upload').addEventListener('change', e => {
     video.load();
     video.onloadeddata = () => {
         document.getElementById('upload-placeholder').style.display = 'none';
+        document.getElementById('overlay').style.display = 'block';
         document.getElementById('persistent-controls').style.display = 'flex';
         isVideoLoaded = true;
         imgW = video.videoWidth;
