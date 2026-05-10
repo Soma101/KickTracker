@@ -959,17 +959,53 @@ const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 
 // ── Shared: place a tap from any input source ────────────────────────
 function placeTap(clientX, clientY) {
+    // Step 1: get canvas-space position of the tap
+    const rect = canvas.getBoundingClientRect();
+    const sx = clientX - rect.left;
+    const sy = clientY - rect.top;
+
+    // Step 2: convert to normalized image coords BEFORE moving the camera
     const coords = screenToNorm(clientX, clientY);
-    if (coords) {
-        activeTap = coords;
-        // Re-center zoom on the tap point, keeping current zoom level
-        const rect = canvas.getBoundingClientRect();
-        const sx = clientX - rect.left;
-        const sy = clientY - rect.top;
-        zoomAround(sx, sy, camScale);
-        updateWorkflow();
-        draw();
+    if (!coords) return;
+
+    // Step 3: reposition camera so the tapped image point is at canvas center
+    // zoomAround keeps the image point at (sx,sy) fixed while changing scale,
+    // but we want it at canvas CENTER after the move.
+    // So: find canvas center in canvas space, then shift camX/camY so the
+    // image pixel under the tap ends up at canvas center.
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    // image pixel position of the tap (in image pixels, not normalized)
+    const ix = coords.x * imgW;
+    const iy = coords.y * imgH;
+    // set camX/camY so that image pixel (ix,iy) maps to canvas center (cw/2, ch/2)
+    // from normToScreen: screenX = ix * camScale + camX → camX = cw/2 - ix*camScale
+    const newCamX = cw / 2 - ix * camScale;
+    const newCamY = ch / 2 - iy * camScale;
+    // Clamp so we don't pan past the image edges.
+    // When zoomed in: image is larger than canvas.
+    //   max camX = 0 (left edge of image at left edge of canvas)
+    //   min camX = cw - imgW*camScale (right edge of image at right edge of canvas)
+    // When zoomed out (fit): image is smaller, camX/camY are centered by fitVideoToCanvas.
+    //   In that case minCamX > 0, so we allow camX to be positive (centered).
+    const minCamX = cw - imgW * camScale;
+    const minCamY = ch - imgH * camScale;
+    // If image fits entirely in canvas (minCam > 0), keep it centered — don't clamp
+    if (minCamX < 0) {
+        camX = Math.max(minCamX, Math.min(0, newCamX));
+    } else {
+        camX = minCamX / 2; // keep centered
     }
+    if (minCamY < 0) {
+        camY = Math.max(minCamY, Math.min(0, newCamY));
+    } else {
+        camY = minCamY / 2; // keep centered
+    }
+
+    // Step 4: store tap and update
+    activeTap = coords;
+    updateWorkflow();
+    draw();
 }
 
 // ── MOBILE: touchstart for taps, touchmove for pinch zoom ────────────
