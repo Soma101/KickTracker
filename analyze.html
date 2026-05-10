@@ -951,98 +951,86 @@ function stepFrame(f) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Canvas pointer events + pinch zoom
+//  Input handling — split by device type
+//  Mobile (coarse pointer = touch): touchstart for instant accurate taps
+//  Desktop (fine pointer = mouse): mousedown for immediate response
 // ═══════════════════════════════════════════════════════════════════════
+const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Pointer events — tap to place, pinch to zoom (canvas-space transforms)
-// ═══════════════════════════════════════════════════════════════════════
-let pinchStartDist  = null;
-let pinchStartScale = 1;
-let pinchStartCamX  = 0;
-let pinchStartCamY  = 0;
-const activePointers = new Map();
-let pointerDownTime  = 0;
-let pointerDownPos   = null;
-let pointerMoved     = false;
-
-function getPinchDist(e1, e2) {
-    return Math.hypot(e1.clientX - e2.clientX, e1.clientY - e2.clientY);
-}
-function getPinchMid(e1, e2) {
-    return { x: (e1.clientX + e2.clientX) / 2, y: (e1.clientY + e2.clientY) / 2 };
-}
-
-canvas.addEventListener('pointerdown', e => {
-    canvas.setPointerCapture(e.pointerId);
-    activePointers.set(e.pointerId, e);
-    pointerMoved = false;
-
-    if (activePointers.size === 2) {
-        const pts = [...activePointers.values()];
-        pinchStartDist  = getPinchDist(pts[0], pts[1]);
-        pinchStartScale = camScale;
-        pinchStartCamX  = camX;
-        pinchStartCamY  = camY;
-    } else if (activePointers.size === 1) {
-        pointerDownTime = Date.now();
-        pointerDownPos  = { x: e.clientX, y: e.clientY };
-    }
-});
-
-canvas.addEventListener('pointermove', e => {
-    if (!activePointers.has(e.pointerId)) return;
-    activePointers.set(e.pointerId, e);
-
-    if (activePointers.size === 2 && pinchStartDist !== null) {
-        const pts = [...activePointers.values()];
-        const dist = getPinchDist(pts[0], pts[1]);
-        const mid  = getPinchMid(pts[0], pts[1]);
-        const rect = canvas.getBoundingClientRect();
-        const sx = mid.x - rect.left;
-        const sy = mid.y - rect.top;
-
-        const newScale = Math.max(getFitScale(), Math.min(getFitScale()*10, pinchStartScale * (dist / pinchStartDist)));
-        // Keep midpoint fixed in image space
-        const ix = (sx - pinchStartCamX) / pinchStartScale;
-        const iy = (sy - pinchStartCamY) / pinchStartScale;
-        camScale = newScale;
-        camX = sx - ix * camScale;
-        camY = sy - iy * camScale;
-        syncZoomSlider();
+// ── Shared: place a tap from any input source ────────────────────────
+function placeTap(clientX, clientY) {
+    const coords = screenToNorm(clientX, clientY);
+    if (coords) {
+        activeTap = coords;
+        updateWorkflow();
         draw();
-        pointerMoved = true;
-    } else if (activePointers.size === 1 && pointerDownPos) {
-        const dx = e.clientX - pointerDownPos.x;
-        const dy = e.clientY - pointerDownPos.y;
-        if (Math.hypot(dx, dy) > 8) pointerMoved = true;
     }
-});
+}
 
-canvas.addEventListener('pointerup', e => {
-    const wasSingleFinger = activePointers.size === 1;
-    activePointers.delete(e.pointerId);
+// ── MOBILE: touchstart for taps, touchmove for pinch zoom ────────────
+if (isTouchDevice) {
+    let touchPinchStartDist  = null;
+    let touchPinchStartScale = 1;
+    let touchPinchStartCamX  = 0;
+    let touchPinchStartCamY  = 0;
 
-    if (activePointers.size < 2) {
-        pinchStartDist = null;
-    }
+    canvas.addEventListener('touchstart', e => {
+        e.preventDefault(); // prevent scroll and 300ms delay
 
-    // Treat as a tap only if single finger, short duration, and didn't move
-    if (wasSingleFinger && !pointerMoved && (Date.now() - pointerDownTime) < 400) {
-        const coords = screenToNorm(e.clientX, e.clientY);
-        if (coords) {
-            activeTap = coords;
-            updateWorkflow();
+        if (e.touches.length === 1) {
+            // Single finger — place tap immediately at touchstart coords
+            // This is the most accurate moment: finger just landed, no movement yet
+            const t = e.touches[0];
+            placeTap(t.clientX, t.clientY);
+        } else if (e.touches.length === 2) {
+            // Two fingers — start pinch zoom
+            const t1 = e.touches[0], t2 = e.touches[1];
+            touchPinchStartDist  = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            touchPinchStartScale = camScale;
+            touchPinchStartCamX  = camX;
+            touchPinchStartCamY  = camY;
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+
+        if (e.touches.length === 2 && touchPinchStartDist !== null) {
+            const t1 = e.touches[0], t2 = e.touches[1];
+            const dist  = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            const midX  = (t1.clientX + t2.clientX) / 2;
+            const midY  = (t1.clientY + t2.clientY) / 2;
+            const rect  = canvas.getBoundingClientRect();
+            const sx    = midX - rect.left;
+            const sy    = midY - rect.top;
+
+            const newScale = Math.max(
+                getFitScale(),
+                Math.min(getFitScale() * 10, touchPinchStartScale * (dist / touchPinchStartDist))
+            );
+            // Keep pinch midpoint fixed in image space
+            const ix = (sx - touchPinchStartCamX) / touchPinchStartScale;
+            const iy = (sy - touchPinchStartCamY) / touchPinchStartScale;
+            camScale = newScale;
+            camX = sx - ix * camScale;
+            camY = sy - iy * camScale;
+            syncZoomSlider();
             draw();
         }
-    }
-    pointerDownPos = null;
-});
+    }, { passive: false });
 
-canvas.addEventListener('pointercancel', e => {
-    activePointers.delete(e.pointerId);
-    pinchStartDist = null;
-});
+    canvas.addEventListener('touchend', e => {
+        if (e.touches.length < 2) {
+            touchPinchStartDist = null;
+        }
+    }, { passive: true });
+
+// ── DESKTOP: mousedown for immediate click response ───────────────────
+} else {
+    canvas.addEventListener('mousedown', e => {
+        placeTap(e.clientX, e.clientY);
+    });
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Draw
