@@ -1,4 +1,4 @@
-console.log("KickTracker build:", "v1.2.2");
+console.log("KickTracker build:", "v1.2.3");
 
 document.getElementById('app-version').textContent = "v1.2.2";
 
