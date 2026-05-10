@@ -962,6 +962,11 @@ function placeTap(clientX, clientY) {
     const coords = screenToNorm(clientX, clientY);
     if (coords) {
         activeTap = coords;
+        // Re-center zoom on the tap point, keeping current zoom level
+        const rect = canvas.getBoundingClientRect();
+        const sx = clientX - rect.left;
+        const sy = clientY - rect.top;
+        zoomAround(sx, sy, camScale);
         updateWorkflow();
         draw();
     }
