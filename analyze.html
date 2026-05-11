@@ -916,12 +916,23 @@ function normToScreen(nx, ny) {
 // ═══════════════════════════════════════════════════════════════════════
 //  Playback
 // ═══════════════════════════════════════════════════════════════════════
+// zoomFocusX/Y = canvas-space point to zoom into.
+// Updated by mousemove (desktop) and pinch midpoint (mobile).
+// Defaults to canvas center.
+let zoomFocusX = null;
+let zoomFocusY = null;
+function getZoomFocus() {
+    return {
+        x: zoomFocusX !== null ? zoomFocusX : canvas.clientWidth  / 2,
+        y: zoomFocusY !== null ? zoomFocusY : canvas.clientHeight / 2,
+    };
+}
+
 document.getElementById('zoom-slider').addEventListener('input', e => {
     const relZoom = parseFloat(e.target.value);
     document.getElementById('zoom-val').innerText = relZoom.toFixed(1) + 'x';
-    // Zoom around center of canvas
-    const cw = canvas.clientWidth, ch = canvas.clientHeight;
-    zoomAround(cw/2, ch/2, relZoom * getFitScale());
+    const f = getZoomFocus();
+    zoomAround(f.x, f.y, relZoom * getFitScale());
     draw();
 });
 
@@ -952,79 +963,59 @@ function stepFrame(f) {
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Input handling — split by device type
-//  Mobile (coarse pointer = touch): touchstart for instant accurate taps
-//  Desktop (fine pointer = mouse): mousedown for immediate response
 // ═══════════════════════════════════════════════════════════════════════
 const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 
-// ── Shared: place a tap from any input source ────────────────────────
-function placeTap(clientX, clientY) {
-    // Step 1: get canvas-space position of the tap
-    const rect = canvas.getBoundingClientRect();
-    const sx = clientX - rect.left;
-    const sy = clientY - rect.top;
-
-    // Step 2: convert to normalized image coords BEFORE moving the camera
-    const coords = screenToNorm(clientX, clientY);
-    if (!coords) return;
-
-    // Step 3: reposition camera so the tapped image point is at canvas center
-    // zoomAround keeps the image point at (sx,sy) fixed while changing scale,
-    // but we want it at canvas CENTER after the move.
-    // So: find canvas center in canvas space, then shift camX/camY so the
-    // image pixel under the tap ends up at canvas center.
+// ── Shared: clamp camera so image stays within canvas ────────────────
+function clampCamera() {
     const cw = canvas.clientWidth;
     const ch = canvas.clientHeight;
-    // image pixel position of the tap (in image pixels, not normalized)
-    const ix = coords.x * imgW;
-    const iy = coords.y * imgH;
-    // set camX/camY so that image pixel (ix,iy) maps to canvas center (cw/2, ch/2)
-    // from normToScreen: screenX = ix * camScale + camX → camX = cw/2 - ix*camScale
-    const newCamX = cw / 2 - ix * camScale;
-    const newCamY = ch / 2 - iy * camScale;
-    // Clamp so we don't pan past the image edges.
-    // When zoomed in: image is larger than canvas.
-    //   max camX = 0 (left edge of image at left edge of canvas)
-    //   min camX = cw - imgW*camScale (right edge of image at right edge of canvas)
-    // When zoomed out (fit): image is smaller, camX/camY are centered by fitVideoToCanvas.
-    //   In that case minCamX > 0, so we allow camX to be positive (centered).
     const minCamX = cw - imgW * camScale;
     const minCamY = ch - imgH * camScale;
-    // If image fits entirely in canvas (minCam > 0), keep it centered — don't clamp
     if (minCamX < 0) {
-        camX = Math.max(minCamX, Math.min(0, newCamX));
+        camX = Math.max(minCamX, Math.min(0, camX));
     } else {
-        camX = minCamX / 2; // keep centered
+        camX = minCamX / 2; // image smaller than canvas — keep centered
     }
     if (minCamY < 0) {
-        camY = Math.max(minCamY, Math.min(0, newCamY));
+        camY = Math.max(minCamY, Math.min(0, camY));
     } else {
-        camY = minCamY / 2; // keep centered
+        camY = minCamY / 2;
     }
+}
 
-    // Step 4: store tap and update
+// ── Shared: place a tap — just records the point, no camera movement ──
+function placeTap(clientX, clientY) {
+    const coords = screenToNorm(clientX, clientY);
+    if (!coords) return;
     activeTap = coords;
     updateWorkflow();
     draw();
 }
 
-// ── MOBILE: touchstart for taps, touchmove for pinch zoom ────────────
+// ── MOBILE ────────────────────────────────────────────────────────────
 if (isTouchDevice) {
     let touchPinchStartDist  = null;
     let touchPinchStartScale = 1;
     let touchPinchStartCamX  = 0;
     let touchPinchStartCamY  = 0;
+    let touchDragLastX = null;
+    let touchDragLastY = null;
+    let touchStartX    = null;
+    let touchStartY    = null;
+    let touchMoved     = false;
 
     canvas.addEventListener('touchstart', e => {
-        e.preventDefault(); // prevent scroll and 300ms delay
-
+        e.preventDefault();
         if (e.touches.length === 1) {
-            // Single finger — place tap immediately at touchstart coords
-            // This is the most accurate moment: finger just landed, no movement yet
             const t = e.touches[0];
-            placeTap(t.clientX, t.clientY);
+            touchStartX    = t.clientX;
+            touchStartY    = t.clientY;
+            touchDragLastX = t.clientX;
+            touchDragLastY = t.clientY;
+            touchMoved     = false;
         } else if (e.touches.length === 2) {
-            // Two fingers — start pinch zoom
+            touchDragLastX = touchDragLastY = null;
             const t1 = e.touches[0], t2 = e.touches[1];
             touchPinchStartDist  = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
             touchPinchStartScale = camScale;
@@ -1035,42 +1026,107 @@ if (isTouchDevice) {
 
     canvas.addEventListener('touchmove', e => {
         e.preventDefault();
-
         if (e.touches.length === 2 && touchPinchStartDist !== null) {
+            // Pinch zoom — zoom into midpoint of two fingers
             const t1 = e.touches[0], t2 = e.touches[1];
-            const dist  = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-            const midX  = (t1.clientX + t2.clientX) / 2;
-            const midY  = (t1.clientY + t2.clientY) / 2;
-            const rect  = canvas.getBoundingClientRect();
-            const sx    = midX - rect.left;
-            const sy    = midY - rect.top;
-
-            const newScale = Math.max(
-                getFitScale(),
-                Math.min(getFitScale() * 10, touchPinchStartScale * (dist / touchPinchStartDist))
-            );
-            // Keep pinch midpoint fixed in image space
+            const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            const midX = (t1.clientX + t2.clientX) / 2;
+            const midY = (t1.clientY + t2.clientY) / 2;
+            const rect = canvas.getBoundingClientRect();
+            const sx = midX - rect.left;
+            const sy = midY - rect.top;
+            const newScale = Math.max(getFitScale(), Math.min(getFitScale() * 10,
+                touchPinchStartScale * (dist / touchPinchStartDist)));
             const ix = (sx - touchPinchStartCamX) / touchPinchStartScale;
             const iy = (sy - touchPinchStartCamY) / touchPinchStartScale;
             camScale = newScale;
             camX = sx - ix * camScale;
             camY = sy - iy * camScale;
+            clampCamera();
             syncZoomSlider();
+            // Update zoom focus so slider stays in sync with pinch midpoint
+            zoomFocusX = sx;
+            zoomFocusY = sy;
+            draw();
+            touchMoved = true;
+        } else if (e.touches.length === 1 && touchDragLastX !== null) {
+            // Single finger drag — pan
+            const t = e.touches[0];
+            if (Math.hypot(t.clientX - touchStartX, t.clientY - touchStartY) > 6) {
+                touchMoved = true;
+            }
+            camX += t.clientX - touchDragLastX;
+            camY += t.clientY - touchDragLastY;
+            clampCamera();
+            touchDragLastX = t.clientX;
+            touchDragLastY = t.clientY;
             draw();
         }
     }, { passive: false });
 
     canvas.addEventListener('touchend', e => {
-        if (e.touches.length < 2) {
-            touchPinchStartDist = null;
+        if (e.touches.length < 2) touchPinchStartDist = null;
+        if (e.touches.length === 0) {
+            if (!touchMoved && touchStartX !== null) {
+                placeTap(touchStartX, touchStartY);
+            }
+            touchDragLastX = touchDragLastY = null;
+            touchStartX    = touchStartY    = null;
         }
     }, { passive: true });
 
-// ── DESKTOP: mousedown for immediate click response ───────────────────
+// ── DESKTOP ───────────────────────────────────────────────────────────
 } else {
-    canvas.addEventListener('mousedown', e => {
-        placeTap(e.clientX, e.clientY);
+    let mouseDownPos  = null;
+    let mouseDragging = false;
+    let mouseCanvasX  = canvas.clientWidth  / 2;
+    let mouseCanvasY  = canvas.clientHeight / 2;
+
+    // Track mouse position so zoom slider can zoom into cursor
+    canvas.addEventListener('mousemove', e => {
+        const rect = canvas.getBoundingClientRect();
+        mouseCanvasX = e.clientX - rect.left;
+        mouseCanvasY = e.clientY - rect.top;
+        // Update shared zoom focus so slider zooms into cursor
+        zoomFocusX = mouseCanvasX;
+        zoomFocusY = mouseCanvasY;
+        if (mouseDragging && mouseDownPos) {
+            camX += e.clientX - mouseDownPos.x;
+            camY += e.clientY - mouseDownPos.y;
+            clampCamera();
+            mouseDownPos = { x: e.clientX, y: e.clientY };
+            draw();
+        }
     });
+
+    canvas.addEventListener('mousedown', e => {
+        mouseDownPos  = { x: e.clientX, y: e.clientY };
+        mouseDragging = false;
+    });
+
+    canvas.addEventListener('mouseup', e => {
+        if (!mouseDragging) {
+            placeTap(e.clientX, e.clientY);
+        }
+        mouseDownPos  = null;
+        mouseDragging = false;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+        mouseDownPos  = null;
+        mouseDragging = false;
+    });
+
+    // Separate mousemove for drag detection (runs alongside the one above)
+    canvas.addEventListener('mousemove', e => {
+        if (mouseDownPos) {
+            const dx = e.clientX - mouseDownPos.x;
+            const dy = e.clientY - mouseDownPos.y;
+            if (Math.hypot(dx, dy) > 4) mouseDragging = true;
+        }
+    });
+
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════
