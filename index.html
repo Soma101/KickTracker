@@ -8,44 +8,49 @@
     <meta name="apple-mobile-web-app-title" content="KickTracker">
     <title>Kick Tracker</title>
     <style>
+        * { box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            height: 100dvh; 
+            height: 100dvh;
             margin: 0;
-            background-color: #000; 
-            color: #fff; 
-            text-align: center;
-            
+            background-color: #000;
+            color: #fff;
             padding-top: env(safe-area-inset-top);
             padding-bottom: env(safe-area-inset-bottom);
-            box-sizing: border-box;
+            overflow: hidden;
         }
-
+ 
+        /* ── Header ── */
+        .header {
+            flex-shrink: 0;
+            text-align: center;
+            padding: 32px 20px 16px;
+        }
         h1 {
             font-size: 40px;
-            font-weight: 900; 
-            margin: 0 0 10px 0;
+            font-weight: 900;
+            margin: 0 0 8px 0;
         }
-
         h2 {
             font-size: 18px;
-            font-weight: 600; 
-            color: #8e8e93; 
-            margin: 0 0 50px 0;
+            font-weight: 600;
+            color: #8e8e93;
+            margin: 0;
         }
-
+ 
+        /* ── Buttons ── */
         .button-container {
+            flex-shrink: 0;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 14px;
             width: 100%;
-            max-width: 250px;
+            max-width: 280px;
+            padding: 20px 20px 0;
         }
-
         button {
             font-size: 20px;
             font-weight: bold;
@@ -56,24 +61,292 @@
             cursor: pointer;
             width: 100%;
         }
-
-        #btn-record { background-color: #ff3b30; } 
-        #btn-analyze { background-color: #007aff; } 
-        #btn-history { background-color: #34c759; } 
-        
+        #btn-record  { background-color: #ff3b30; }
+        #btn-analyze { background-color: #007aff; }
+        #btn-history { background-color: #34c759; }
+ 
+        /* ── How To Use ── */
+        .how-to-btn {
+            flex-shrink: 0;
+            background: none;
+            border: 1px solid #3a3a3c;
+            border-radius: 12px;
+            color: #8e8e93;
+            font-size: 15px;
+            font-weight: bold;
+            padding: 10px 20px;
+            cursor: pointer;
+            width: calc(100% - 40px);
+            max-width: 280px;
+            margin-top: 10px;
+        }
+ 
+        /* ── Guide Modal ── */
+        .guide-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 100;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .guide-overlay.visible { display: flex; }
+        .guide-sheet {
+            background: #1c1c1e;
+            width: 100%;
+            max-width: 480px;
+            border-radius: 20px 20px 0 0;
+            padding: 16px 20px 28px;
+            max-height: 85dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        .guide-handle {
+            width: 36px; height: 4px;
+            background: #3a3a3c;
+            border-radius: 2px;
+            margin: 0 auto 16px;
+        }
+        .guide-title {
+            font-size: 20px;
+            font-weight: 800;
+            text-align: center;
+            margin: 0 0 16px;
+        }
+        .guide-scroll {
+            overflow-y: auto;
+            flex: 1;
+        }
+        .guide-section {
+            background: #2c2c2e;
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+        .guide-section-title {
+            font-size: 13px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0 0 10px;
+        }
+        .guide-section-title.red    { color: #ff3b30; }
+        .guide-section-title.blue   { color: #007aff; }
+        .guide-section-title.green  { color: #34c759; }
+        .guide-section-title.orange { color: #ff9500; }
+        .guide-step {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 14px;
+            line-height: 1.4;
+            color: #d1d1d6;
+        }
+        .guide-step:last-child { margin-bottom: 0; }
+        .step-num {
+            flex-shrink: 0;
+            width: 20px; height: 20px;
+            background: #3a3a3c;
+            border-radius: 50%;
+            font-size: 11px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            margin-top: 1px;
+        }
+        .guide-tip {
+            font-size: 13px;
+            color: #636366;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #3a3a3c;
+            line-height: 1.4;
+        }
+        .btn-close-guide {
+            margin-top: 14px;
+            width: 100%;
+            padding: 14px;
+            background: #007aff;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
-
-    <h1>Kick Tracker</h1>
-    <h2>Optics & Physics Engine</h2>
-    <div id="app-version" style="margin-top: 20px; font-size: 12px; color: #8e8e93;"></div>
+ 
+    <div class="header">
+        <h1>Kick Tracker</h1>
+        <h2>Optics & Physics Engine</h2>
+    </div>
+ 
     <div class="button-container">
-        <button id="btn-record">Record video</button>
+        <button id="btn-record">Record Video</button>
         <button id="btn-analyze">Analyze Video</button>
         <button id="btn-history">Kick History</button>
     </div>
-
+ 
+    <button class="how-to-btn" id="btn-how-to">How To Use ↑</button>
+ 
+    <!-- ── Guide Sheet ── -->
+    <div class="guide-overlay" id="guide-overlay">
+        <div class="guide-sheet">
+            <div class="guide-handle"></div>
+            <div class="guide-title">How To Use</div>
+ 
+            <div class="guide-scroll">
+ 
+                <!-- Record -->
+                <div class="guide-section">
+                    <div class="guide-section-title red">🎥 Record Video</div>
+                    <div class="guide-step">
+                        <div class="step-num">1</div>
+                        <div>Set your camera directly behind the ball, lined up with the uprights. Keep it as steady as possible.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">2</div>
+                        <div>Tap Record. Press START before the snap and STOP after the ball lands.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">3</div>
+                        <div>Review the clip — tap Use Video to proceed to analysis, or Retake to re-record.</div>
+                    </div>
+                    <div class="guide-tip">💡 Tip: Film from 10–20 yards behind the ball at ground level for best accuracy.</div>
+                </div>
+ 
+                <!-- Setup -->
+                <div class="guide-section">
+                    <div class="guide-section-title blue">⚙️ Kick Setup</div>
+                    <div class="guide-step">
+                        <div class="step-num">1</div>
+                        <div>Set Camera Depth — how far behind the ball your camera was placed (in yards).</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">2</div>
+                        <div>Choose Football Type (NFL 11" / CFB 10.5" / Custom) — used to calibrate ball size in the frame.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">3</div>
+                        <div>Choose Upright Type (NFL 18.5ft / CFB 23.4ft / Custom) — sets the target window for Good From calculations.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">4</div>
+                        <div>Select Hash Position (Left / Middle / Right) — adjusts the lateral tolerance window for your kick location.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">5</div>
+                        <div>Toggle Uprights Visible if the goal posts appear in your video — this enables a camera angle correction step.</div>
+                    </div>
+                </div>
+ 
+                <!-- Analyze -->
+                <div class="guide-section">
+                    <div class="guide-section-title blue">📐 Analyze Video — Step by Step</div>
+                    <div class="guide-step">
+                        <div class="step-num">1</div>
+                        <div><b style="color:#fff">Scale Dots:</b> Tap two points on the ground exactly 10 yards apart (e.g. two yard line markings near the ball). These calibrate real-world distance.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">2</div>
+                        <div><b style="color:#fff">Ball Size:</b> Pause on a still frame just before the kick. Tap the top then the bottom of the ball. The midpoint becomes the impact baseline.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">3</div>
+                        <div><b style="color:#fff">Uprights (optional):</b> If visible, scrub to the impact frame and tap the left then right upright post. This corrects for camera offset from center.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">4</div>
+                        <div><b style="color:#fff">Half-Up:</b> Scrub to roughly halfway through the ball's rise. Tap the ball.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">5</div>
+                        <div><b style="color:#fff">Apex:</b> Scrub to approximately the highest point of the ball's arc. Tap the ball.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">6</div>
+                        <div><b style="color:#fff">Half-Down:</b> Scrub to roughly halfway through the ball's descent. Tap the ball.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">7</div>
+                        <div><b style="color:#fff">Landing:</b> Scrub to the frame where the ball hits the ground (or nets). Tap the ball.</div>
+                    </div>
+                    <div class="guide-tip">💡 Tip: Pinch to zoom in (mobile) or use the zoom slider to see the ball clearly before tapping. Drag to pan around the frame. Use -1 Fr / +1 Fr to step frame by frame.</div>
+                </div>
+ 
+                <!-- Report -->
+                <div class="guide-section">
+                    <div class="guide-section-title orange">📊 Reading the Report</div>
+                    <div class="guide-step">
+                        <div class="step-num">•</div>
+                        <div><b style="color:#fff">Kick Distance:</b> Predicted total distance the ball traveled in yards.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">•</div>
+                        <div><b style="color:#fff">Good From:</b> The maximum distance this kick would be good from, given its drift and height profile.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">•</div>
+                        <div><b style="color:#fff">Drift Profile:</b> Whether the ball drifted Left, Right, or flew Straight through the uprights.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">•</div>
+                        <div><b style="color:#fff">Drift at Landing:</b> Exact lateral distance (in yards) from upright center at predicted landing point.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">•</div>
+                        <div><b style="color:#fff">Hang Time:</b> Total time the ball was in the air from impact to landing.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">•</div>
+                        <div><b style="color:#fff">Peak Height:</b> Maximum height the ball reached in feet.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">•</div>
+                        <div><b style="color:#fff">Launch Angle:</b> The angle of the ball's trajectory off the foot in degrees.</div>
+                    </div>
+                </div>
+ 
+                <!-- History -->
+                <div class="guide-section">
+                    <div class="guide-section-title green">📋 Kick History</div>
+                    <div class="guide-step">
+                        <div class="step-num">•</div>
+                        <div>Every completed analysis is automatically saved. View past kicks sorted newest first.</div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-num">•</div>
+                        <div>Up to 100 kicks are stored on this device. Use Clear All History to reset.</div>
+                    </div>
+                </div>
+ 
+            </div>
+ 
+            <button class="btn-close-guide" id="btn-close-guide">Got It</button>
+        </div>
+    </div>
+ 
     <script src="index.js"></script>
+    <script>
+        document.getElementById('btn-how-to').addEventListener('click', () => {
+            document.getElementById('guide-overlay').classList.add('visible');
+        });
+        document.getElementById('btn-close-guide').addEventListener('click', () => {
+            document.getElementById('guide-overlay').classList.remove('visible');
+        });
+        // Tap overlay background to dismiss
+        document.getElementById('guide-overlay').addEventListener('click', e => {
+            if (e.target === document.getElementById('guide-overlay')) {
+                document.getElementById('guide-overlay').classList.remove('visible');
+            }
+        });
+    </script>
 </body>
 </html>
