@@ -26,9 +26,6 @@
 
         h1 { font-size: 40px; font-weight: 900; margin: 0 0 10px 0; }
         h2 { font-size: 18px; font-weight: 600; color: #8e8e93; margin: 0 0 40px 0; }
-        <h1>Kick Tracker</h1>
-        <h2>Optics & Physics Engine</h2>
-        <p style="color: #8e8e93; font-size: 14px;">Build: <span id="app-version"></span></p> <div class="button-container">
 
         .button-container {
             display: flex;
@@ -142,6 +139,8 @@
 
     <h1>Kick Tracker</h1>
     <h2>Optics & Physics Engine</h2>
+    
+    <p style="color: #8e8e93; font-size: 14px; margin-bottom: 30px;">Build: <span id="app-version"></span></p> 
 
     <div class="button-container">
         <button class="main-btn" id="btn-record">Record Video</button>
@@ -151,14 +150,12 @@
 
     <button class="how-to-btn" id="btn-how-to">How To Use ↑</button>
 
-    <!-- Guide Sheet -->
     <div class="guide-overlay" id="guide-overlay">
         <div class="guide-sheet">
             <div class="guide-handle"></div>
             <div class="guide-title">How To Use</div>
             <div class="guide-scroll">
 
-                <!-- Navigation card -->
                 <div style="background:#2c2c2e;border-radius:12px;padding:14px;margin-bottom:12px;display:flex;gap:16px;">
                     <div style="flex:1;text-align:center;">
                         <div style="font-size:28px;margin-bottom:6px;">📱</div>
@@ -181,7 +178,6 @@
                     </div>
                 </div>
 
-                <!-- Record -->
                 <div class="guide-section">
                     <div class="guide-section-title red">🎥 Record Video</div>
                     <div class="guide-step"><div class="step-num">1</div><div>Set your camera directly behind the ball, lined up with the uprights. Keep it as steady as possible.</div></div>
@@ -190,7 +186,6 @@
                     <div class="guide-tip">💡 Tip: Film from 10–20 yards behind the ball at ground level for best accuracy.</div>
                 </div>
 
-                <!-- Setup -->
                 <div class="guide-section">
                     <div class="guide-section-title blue">⚙️ Kick Setup</div>
                     <div class="guide-step"><div class="step-num">1</div><div>Set Camera Depth — how far behind the ball your camera was placed (in yards).</div></div>
@@ -200,7 +195,6 @@
                     <div class="guide-step"><div class="step-num">5</div><div>Toggle Uprights Visible if the goal posts appear in your video — this enables a camera angle correction step.</div></div>
                 </div>
 
-                <!-- Analyze -->
                 <div class="guide-section">
                     <div class="guide-section-title blue">📐 Analyze Video — Step by Step</div>
                     <div class="guide-step"><div class="step-num">1</div><div><b style="color:#fff">Scale Dots:</b> Tap two points on the ground exactly 10 yards apart in the forward direction (toward the uprights) — e.g. two consecutive yard line markings near the ball. These calibrate real-world distance.</div></div>
@@ -213,7 +207,6 @@
                     <div class="guide-tip">💡 Navigation: Use the zoom slider or pinch (mobile) to zoom in. To move around — tap &amp; drag on mobile, click &amp; drag on laptop. Use -1 Fr / +1 Fr to step frame by frame.</div>
                 </div>
 
-                <!-- Report -->
                 <div class="guide-section">
                     <div class="guide-section-title orange">📊 Reading the Report</div>
                     <div class="guide-step"><div class="step-num">•</div><div><b style="color:#fff">Kick Distance:</b> Predicted total distance the ball traveled in yards.</div></div>
@@ -225,7 +218,6 @@
                     <div class="guide-step"><div class="step-num">•</div><div><b style="color:#fff">Launch Angle:</b> The angle of the ball's trajectory off the foot in degrees.</div></div>
                 </div>
 
-                <!-- History -->
                 <div class="guide-section">
                     <div class="guide-section-title green">📋 Kick History</div>
                     <div class="guide-step"><div class="step-num">•</div><div>Every completed analysis is automatically saved. View past kicks sorted newest first.</div></div>
