@@ -87,9 +87,7 @@
             overflow: hidden;
             background: #000;
         }
-        /* video is hidden — we draw it onto canvas ourselves */
         video { display: none; }
-        /* canvas fills the entire viewport container */
         canvas {
             display: block;
             position: absolute;
@@ -98,7 +96,6 @@
             height: 100%;
             touch-action: none;
         }
-        /* zoom-wrapper removed — canvas fills container directly */
         .upload-placeholder {
             position: absolute;
             top: 50%; left: 50%;
@@ -242,7 +239,6 @@
             font-size: 15px;
             font-weight: bold;
         }
-        /* iOS-style toggle */
         .toggle { position: relative; width: 51px; height: 31px; flex-shrink: 0; }
         .toggle input { opacity: 0; width: 0; height: 0; }
         .toggle-slider {
@@ -394,15 +390,14 @@
 <div class="dashboard">
     <div class="results-box" id="status-text">Upload a video to begin.</div>
     <div class="progress-bar" id="progress-bar">
-        </div>
+    </div>
 </div>
 
 <div class="viewport-container" id="viewport-container">
-    <div class="upload-placeholder" id="upload-placeholder"
-         onclick="document.getElementById('file-upload').click()">
+    <div class="upload-placeholder" id="upload-placeholder" onclick="document.getElementById('file-upload').click()">
         Upload Video
     </div>
-    <video id="video-player" playsinline style="display:none;"></video>
+    <video id="video-player" playsinline muted style="display:none;"></video>
     <canvas id="overlay" style="display:none;"></canvas>
 </div>
 
@@ -413,8 +408,7 @@
         <span id="zoom-val" style="font-size:12px;width:35px;text-align:right;">1x</span>
     </div>
     <div id="playback-controls">
-        <input type="range" id="scrubber" min="0" max="1" step="0.001" value="0"
-               style="width:100%; margin-bottom:8px;">
+        <input type="range" id="scrubber" min="0" max="1" step="0.001" value="0" style="width:100%; margin-bottom:8px;">
         <div class="playback-row">
             <button onclick="stepFrame(-1)">-1 Fr</button>
             <button id="btn-playpause" onclick="togglePlay()" style="font-size:18px;padding:6px 20px;">▶</button>
@@ -450,93 +444,66 @@
             <div class="report-row"><span>Launch Angle</span>  <span id="rep-angle"  class="text-orange">--°</span></div>
             <div class="report-row"><span>True Apex Time</span><span id="rep-apex"   style="font-weight:bold;">--s</span></div>
         </div>
-        <button class="btn-close-modal"
-                onclick="document.getElementById('report-modal').style.display='none'">
+        <button class="btn-close-modal" onclick="document.getElementById('report-modal').style.display='none'">
             Close Report
         </button>
     </div>
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════
-//  Constants
-// ═══════════════════════════════════════════════════════════════════════
 const fps = 30;
-
-// Football lengths (inches, short axis / length used for focal calibration)
 const BALL_LENGTHS = { nfl: 11, cfb: 10.5 };
-
-// Upright specs: { widthFt, crossbarFt }
 const UPRIGHT_SPECS = {
     nfl: { widthFt: 18.5, crossbarFt: 10 },
     cfb: { widthFt: 23.4, crossbarFt: 10 },
 };
-
-// Hash offsets from upright center (feet).
-// Positive = ball is to the right of upright center.
-// NFL hashes: 9.25ft from center each side (same as upright half-width)
-// CFB hashes: 26.67ft from center each side
 const HASH_OFFSETS_FT = {
     nfl:  { left: -9.25,  middle: 0, right: 9.25  },
     cfb:  { left: -26.67, middle: 0, right: 26.67 },
-    custom: { left: 0, middle: 0, right: 0 }, // custom uprights use middle only
+    custom: { left: 0, middle: 0, right: 0 }, 
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Setup state (from popup)
-// ═══════════════════════════════════════════════════════════════════════
 let setupConfig = {
     cameraDistance:  15,
-    ballType:        'nfl',   // 'nfl' | 'cfb' | 'custom'
+    ballType:        'nfl',   
     ballLengthIn:    11,
-    uprightType:     'nfl',   // 'nfl' | 'cfb' | 'custom'
+    uprightType:     'nfl',   
     uprightWidthFt:  18.5,
     crossbarFt:      10,
-    hashPosition:    'middle',// 'left' | 'middle' | 'right'
+    hashPosition:    'middle',
     uprrightsVisible: false,
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-//  DOM refs
-// ═══════════════════════════════════════════════════════════════════════
 const video       = document.getElementById('video-player');
 const canvas      = document.getElementById('overlay');
-// OPTIMIZATION: Turning off alpha channel for hardware acceleration boost
+// OPTIMIZATION: Hardware acceleration unlock
 const ctx         = canvas.getContext('2d', { alpha: false });
-const zoomWrapper = null; // removed — canvas fills container directly
 const scrubber    = document.getElementById('scrubber');
 const statusText  = document.getElementById('status-text');
 
-// ═══════════════════════════════════════════════════════════════════════
-//  App state
-// ═══════════════════════════════════════════════════════════════════════
 let isVideoLoaded     = false;
 let isScrubbing       = false;
-// Canvas-space camera (like the example — no CSS transforms)
-let camScale  = 1.0;   // current zoom level
-let camX      = 0;     // canvas offset X (pixels)
-let camY      = 0;     // canvas offset Y (pixels)
-let imgW      = 0;     // native video width (set on load)
-let imgH      = 0;     // native video height (set on load)
-const zoomLevel = { get value() { return camScale; } }; // shim for legacy refs
+let camScale  = 1.0;   
+let camX      = 0;     
+let camY      = 0;     
+let imgW      = 0;     
+let imgH      = 0;     
+const zoomLevel = { get value() { return camScale; } }; 
 
 let scaleDots          = [];
-let ballTeeDots        = [];    // [topTap, bottomTap] normalized coords
+let ballTeeDots        = [];    
 let ballTeePixelHeight = 0;
-let uprightDots        = [];    // [leftPost, rightPost] tapped on impact frame
+let uprightDots        = [];    
 let activeTap          = null;
 let startPt            = null;
 let halfUpPt           = null;
 let peakPt             = null;
 let halfDownPt         = null;
 let endPt              = null;
-let centerX            = null;  // raw canvas X of ball box center
+let centerX            = null;  
 
 const physics = new KickPhysicsEngine();
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Setup Modal
-// ═══════════════════════════════════════════════════════════════════════
 function openSetup() {
     document.getElementById('setup-modal').classList.add('visible');
 }
@@ -552,25 +519,20 @@ function buildSegControl(segId, onSelect) {
     });
 }
 
-// Camera depth slider in popup
 document.getElementById('setup-cam-depth').addEventListener('input', e => {
     document.getElementById('setup-depth-val').innerText = e.target.value + ' yd';
 });
 
-// Ball type seg
 buildSegControl('ball-type-seg', val => {
     document.getElementById('ball-custom-inputs').classList.toggle('visible', val === 'custom');
 });
 
-// Upright type seg
 buildSegControl('upright-type-seg', val => {
     document.getElementById('upright-custom-inputs').classList.toggle('visible', val === 'custom');
 });
 
-// Hash seg — just selection, no extra UI
 buildSegControl('hash-seg', () => {});
 
-// Confirm button
 document.getElementById('setup-confirm-btn').addEventListener('click', () => {
     const ballSeg    = document.querySelector('#ball-type-seg .seg-btn.active').dataset.val;
     const uprightSeg = document.querySelector('#upright-type-seg .seg-btn.active').dataset.val;
@@ -593,20 +555,12 @@ document.getElementById('setup-confirm-btn').addEventListener('click', () => {
 
     document.getElementById('setup-modal').classList.remove('visible');
 
-    // Rebuild workflow with new config if video already loaded
     if (isVideoLoaded) { resetAll(); }
 });
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Compute asymmetric upright tolerances (yards) given config
-//  Returns { nearYds, farYds, crossbarFt }
-//  nearYds: room on the side the ball starts (could be negative = must hook back)
-//  farYds:  room on the opposite side
-// ═══════════════════════════════════════════════════════════════════════
 function getUprightTolerances(cfg) {
-    const halfWidthYds = (cfg.uprightWidthFt / 2) / 3; // ft → yards
+    const halfWidthYds = (cfg.uprightWidthFt / 2) / 3; 
 
-    // Hash offset in yards (how far ball is from upright center laterally)
     let hashOffsetFt = 0;
     if (cfg.hashPosition !== 'middle') {
         const spec = HASH_OFFSETS_FT[cfg.uprightType] || HASH_OFFSETS_FT['nfl'];
@@ -614,29 +568,16 @@ function getUprightTolerances(cfg) {
     }
     const hashOffsetYds = hashOffsetFt / 3;
 
-    // If ball is to the LEFT of center (negative offset):
-    //   room to drift LEFT  = halfWidthYds - |hashOffsetYds|  (could go negative)
-    //   room to drift RIGHT = halfWidthYds + |hashOffsetYds|
-    // We return signed tolerances:
-    //   leftTol  = halfWidthYds + hashOffsetYds  (positive hashOffset = ball right of center → less room right)
-    //   rightTol = halfWidthYds - hashOffsetYds
-    const leftTol  = halfWidthYds + hashOffsetYds;  // room on left side (yds)
-    const rightTol = halfWidthYds - hashOffsetYds;  // room on right side (yds)
+    const leftTol  = halfWidthYds + hashOffsetYds;  
+    const rightTol = halfWidthYds - hashOffsetYds;  
 
     return { leftTol, rightTol, crossbarFt: cfg.crossbarFt, halfWidthYds };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Workflow step count depends on uprights visible
-// ═══════════════════════════════════════════════════════════════════════
 function getSteps() {
     const steps = [];
     let n = 0;
 
-    // Step: scrub to impact frame (no tap required — just a gate)
-    // Actually we just instruct the user. Impact tap IS the gate (step below).
-
-    // 1. Scale dot 1
     steps.push({
         id: 'scale1',
         status: () => `Step ${++n} of ${totalSteps()}: Tap 1st scale reference dot (10 yds apart)`,
@@ -645,7 +586,6 @@ function getSteps() {
         ready: () => activeTap !== null,
         confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
     });
-    // 2. Scale dot 2
     steps.push({
         id: 'scale2',
         status: () => `Step ${n} of ${totalSteps()}: Tap 2nd scale reference dot`,
@@ -654,7 +594,6 @@ function getSteps() {
         ready: () => activeTap !== null,
         confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
     });
-    // 3. Ball top tap
     steps.push({
         id: 'ballTop',
         status: () => `Step ${n} of ${totalSteps()}: Pause on still frame before kick. Tap the TOP of the ball.`,
@@ -663,7 +602,6 @@ function getSteps() {
         ready: () => activeTap !== null,
         confirm: () => { ballTeeDots[0] = {...activeTap}; activeTap = null; }
     });
-    // 4. Ball bottom tap — midpoint = impact baseline
     steps.push({
         id: 'ballBottom',
         status: () => `Step ${n} of ${totalSteps()}: Tap the BOTTOM of the ball (same frame).`,
@@ -673,7 +611,6 @@ function getSteps() {
         confirm: () => {
             ballTeeDots[1] = {...activeTap};
             ballTeePixelHeight = Math.abs(ballTeeDots[0].y - ballTeeDots[1].y) * canvas.clientHeight;
-            // Midpoint of top+bottom = impact position and lateral baseline
             const cx = (ballTeeDots[0].x + ballTeeDots[1].x) / 2;
             const cy = (ballTeeDots[0].y + ballTeeDots[1].y) / 2;
             centerX = cx;
@@ -682,8 +619,6 @@ function getSteps() {
         }
     });
 
-
-    // 5+6. If uprights visible: tap left post, right post on impact frame
     if (setupConfig.uprrightsVisible) {
         steps.push({
             id: 'uprightLeft',
@@ -740,7 +675,6 @@ function getSteps() {
         }
     });
 
-    // Renumber statuses now that we know n
     let idx = 1;
     steps.forEach(s => {
         const i = idx++;
@@ -753,18 +687,15 @@ function getSteps() {
 }
 
 function totalSteps() {
-    // scale×2 + ballTop + ballBottom + (uprights×2 optional) + halfUp + apex + halfDown + landing
     return 8 + (setupConfig.uprrightsVisible ? 2 : 0);
 }
 
 function currentStepIndex() {
-    // 0=scale1, 1=scale2, 2=ballTop, 3=ballBottom(sets startPt),
-    // [4=uprightL, 5=uprightR,] 4/6=halfUp, 5/7=apex, 6/8=halfDown, 7/9=landing
     let i = 0;
     if (scaleDots.length > 0)    i = 1;
     if (scaleDots.length > 1)    i = 2;
     if (ballTeeDots.length > 0)  i = 3;
-    if (startPt) { // set when ballBottom confirmed
+    if (startPt) { 
         if (setupConfig.uprrightsVisible) {
             i = 4;
             if (uprightDots.length > 0) i = 5;
@@ -788,9 +719,6 @@ function normalizedPos(tap) {
     return { x: tap.x - centerX + 0.5, y: tap.y };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Progress dots — rebuilt dynamically
-// ═══════════════════════════════════════════════════════════════════════
 function rebuildProgressDots() {
     const bar = document.getElementById('progress-bar');
     const total = totalSteps();
@@ -813,9 +741,6 @@ function updateProgressDots(stepIdx) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  File Loading
-// ═══════════════════════════════════════════════════════════════════════
 document.getElementById('file-upload').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -829,15 +754,11 @@ document.getElementById('file-upload').addEventListener('change', e => {
         imgW = video.videoWidth;
         imgH = video.videoHeight;
         scrubber.max = video.duration;
-        resizeCanvas(); // sizes canvas, calls fitVideoToCanvas
-        // Show setup popup for each new video
+        resizeCanvas(); 
         openSetup();
     };
 });
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Canvas sizing — fills viewport-container at device pixel ratio
-// ═══════════════════════════════════════════════════════════════════════
 function resizeCanvas() {
     const container = document.querySelector('.viewport-container');
     const dpr = window.devicePixelRatio || 1;
@@ -852,7 +773,6 @@ function resizeCanvas() {
 }
 window.addEventListener('resize', () => { resizeCanvas(); requestDraw(); });
 
-// Fit video into canvas (like object-fit:contain), reset camera
 function fitVideoToCanvas() {
     const cw = canvas.clientWidth;
     const ch = canvas.clientHeight;
@@ -865,7 +785,6 @@ function fitVideoToCanvas() {
 }
 
 function syncZoomSlider() {
-    // Slider represents zoom relative to fit-scale (1x = fitted)
     const fitScale = getFitScale();
     const relZoom = camScale / fitScale;
     document.getElementById('zoom-slider').value = Math.max(1, Math.min(10, relZoom));
@@ -878,19 +797,16 @@ function getFitScale() {
     return Math.min(cw / (imgW||1), ch / (imgH||1));
 }
 
-// Convert screen (canvas client) coords → normalized image coords [0,1]
 function screenToNorm(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
     const sx = clientX - rect.left;
     const sy = clientY - rect.top;
     const ix = (sx - camX) / camScale;
     const iy = (sy - camY) / camScale;
-    // Reject if outside image bounds
     if (ix < 0 || ix > imgW || iy < 0 || iy > imgH) return null;
     return { x: ix / imgW, y: iy / imgH };
 }
 
-// Convert normalized image coords [0,1] → canvas client coords
 function normToScreen(nx, ny) {
     return {
         x: nx * imgW * camScale + camX,
@@ -898,12 +814,6 @@ function normToScreen(nx, ny) {
     };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Playback
-// ═══════════════════════════════════════════════════════════════════════
-// zoomFocusX/Y = canvas-space point to zoom into.
-// Updated by mousemove (desktop) and pinch midpoint (mobile).
-// Defaults to canvas center.
 let zoomFocusX = null;
 let zoomFocusY = null;
 function getZoomFocus() {
@@ -921,7 +831,6 @@ document.getElementById('zoom-slider').addEventListener('input', e => {
     requestDraw();
 });
 
-// Zoom to newScale keeping screen point (sx,sy) fixed in image space
 function zoomAround(sx, sy, newScale) {
     const ix = (sx - camX) / camScale;
     const iy = (sy - camY) / camScale;
@@ -936,11 +845,11 @@ video.addEventListener('timeupdate', () => {
     requestDraw(); 
 });
 
-// OPTIMIZATION: Throttled Scrubber
 let lastScrub = 0;
 scrubber.addEventListener('input',  e => { 
     isScrubbing = true;  
     const now = performance.now();
+    // OPTIMIZATION: Throttled decoder requests
     if (now - lastScrub > 50) {
         video.currentTime = e.target.value; 
         lastScrub = now;
@@ -964,12 +873,8 @@ function stepFrame(f) {
     video.currentTime += (1/fps) * f;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Input handling — split by device type
-// ═══════════════════════════════════════════════════════════════════════
 const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 
-// ── Shared: clamp camera so image stays within canvas ────────────────
 function clampCamera() {
     const cw = canvas.clientWidth;
     const ch = canvas.clientHeight;
@@ -978,7 +883,7 @@ function clampCamera() {
     if (minCamX < 0) {
         camX = Math.max(minCamX, Math.min(0, camX));
     } else {
-        camX = minCamX / 2; // image smaller than canvas — keep centered
+        camX = minCamX / 2; 
     }
     if (minCamY < 0) {
         camY = Math.max(minCamY, Math.min(0, camY));
@@ -987,7 +892,6 @@ function clampCamera() {
     }
 }
 
-// ── Shared: place a tap — just records the point, no camera movement ──
 function placeTap(clientX, clientY) {
     const coords = screenToNorm(clientX, clientY);
     if (!coords) return;
@@ -996,7 +900,6 @@ function placeTap(clientX, clientY) {
     requestDraw();
 }
 
-// ── MOBILE ────────────────────────────────────────────────────────────
 if (isTouchDevice) {
     let touchPinchStartDist  = null;
     let touchPinchStartScale = 1;
@@ -1030,7 +933,6 @@ if (isTouchDevice) {
     canvas.addEventListener('touchmove', e => {
         e.preventDefault();
         if (e.touches.length === 2 && touchPinchStartDist !== null) {
-            // Pinch zoom — zoom into midpoint of two fingers
             const t1 = e.touches[0], t2 = e.touches[1];
             const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
             const midX = (t1.clientX + t2.clientX) / 2;
@@ -1047,13 +949,11 @@ if (isTouchDevice) {
             camY = sy - iy * camScale;
             clampCamera();
             syncZoomSlider();
-            // Update zoom focus so slider stays in sync with pinch midpoint
             zoomFocusX = sx;
             zoomFocusY = sy;
             requestDraw();
             touchMoved = true;
         } else if (e.touches.length === 1 && touchDragLastX !== null) {
-            // Single finger drag — pan
             const t = e.touches[0];
             if (Math.hypot(t.clientX - touchStartX, t.clientY - touchStartY) > 6) {
                 touchMoved = true;
@@ -1078,27 +978,32 @@ if (isTouchDevice) {
         }
     }, { passive: true });
 
-// ── DESKTOP ───────────────────────────────────────────────────────────
 } else {
     let mouseDownPos  = null;
     let mouseDragging = false;
     let mouseCanvasX  = canvas.clientWidth  / 2;
     let mouseCanvasY  = canvas.clientHeight / 2;
 
-    // Track mouse position so zoom slider can zoom into cursor
+    // OPTIMIZATION: Consolidated Mouse Move
     canvas.addEventListener('mousemove', e => {
         const rect = canvas.getBoundingClientRect();
         mouseCanvasX = e.clientX - rect.left;
         mouseCanvasY = e.clientY - rect.top;
-        // Update shared zoom focus so slider zooms into cursor
         zoomFocusX = mouseCanvasX;
         zoomFocusY = mouseCanvasY;
-        if (mouseDragging && mouseDownPos) {
-            camX += e.clientX - mouseDownPos.x;
-            camY += e.clientY - mouseDownPos.y;
-            clampCamera();
-            mouseDownPos = { x: e.clientX, y: e.clientY };
-            requestDraw();
+        
+        if (mouseDownPos) {
+            const dx = e.clientX - mouseDownPos.x;
+            const dy = e.clientY - mouseDownPos.y;
+            if (Math.hypot(dx, dy) > 4) mouseDragging = true;
+            
+            if (mouseDragging) {
+                camX += e.clientX - mouseDownPos.x;
+                camY += e.clientY - mouseDownPos.y;
+                clampCamera();
+                mouseDownPos = { x: e.clientX, y: e.clientY };
+                requestDraw();
+            }
         }
     });
 
@@ -1120,23 +1025,25 @@ if (isTouchDevice) {
         mouseDragging = false;
     });
 
-    // Separate mousemove for drag detection (runs alongside the one above)
-    canvas.addEventListener('mousemove', e => {
-        if (mouseDownPos) {
-            const dx = e.clientX - mouseDownPos.x;
-            const dy = e.clientY - mouseDownPos.y;
-            if (Math.hypot(dx, dy) > 4) mouseDragging = true;
+    // OPTIMIZATION: Laptop Trackpad / Mouse Wheel Support
+    canvas.addEventListener('wheel', e => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        
+        const zoomSpeed = 0.05;
+        let delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
+        if (e.ctrlKey) { // Automatically handles trackpad pinch-to-zoom mapping
+            delta = e.deltaY > 0 ? -zoomSpeed * 2 : zoomSpeed * 2;
         }
-    });
-
-
+        
+        const newScale = Math.max(getFitScale(), Math.min(getFitScale() * 10, camScale * (1 + delta)));
+        zoomAround(sx, sy, newScale);
+        requestDraw();
+    }, { passive: false });
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Draw
-// ═══════════════════════════════════════════════════════════════════════
-
-// OPTIMIZATION: requestAnimationFrame handler
 let drawPending = false;
 function requestDraw() {
     if (!drawPending) {
@@ -1154,14 +1061,11 @@ function draw() {
     const h = canvas.clientHeight;
     ctx.clearRect(0, 0, w, h);
 
-    // Draw video frame at current camera transform
-    ctx.drawImage(video, camX, camY, imgW * camScale, imgH * camScale);
+    // OPTIMIZATION: Sub-pixel rounding for massive FPS boost
+    ctx.drawImage(video, Math.round(camX), Math.round(camY), Math.round(imgW * camScale), Math.round(imgH * camScale));
 
-    // All markers use normToScreen() to convert stored [0,1] coords to canvas pixels.
-    // Dot size stays constant on screen regardless of zoom.
     const dr = 6;
 
-    // Center reference line
     if (centerX !== null) {
         const cx = normToScreen(centerX, 0).x;
         ctx.save();
@@ -1172,7 +1076,6 @@ function draw() {
         ctx.stroke(); ctx.setLineDash([]); ctx.restore();
     }
 
-    // Upright reference lines
     if (uprightDots.length === 2) {
         const lx = normToScreen(uprightDots[0].x, 0).x;
         const rx = normToScreen(uprightDots[1].x, 0).x;
@@ -1190,7 +1093,6 @@ function draw() {
         ctx.fillText('R Post', rx + 3, 14);
     }
 
-    // Scale line
     if (scaleDots.length === 2) {
         const s0 = normToScreen(scaleDots[0].x, scaleDots[0].y);
         const s1 = normToScreen(scaleDots[1].x, scaleDots[1].y);
@@ -1203,7 +1105,6 @@ function draw() {
         ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
     });
 
-    // Ball tee dots
     ballTeeDots.forEach((p, i) => {
         const s = normToScreen(p.x, p.y);
         ctx.fillStyle = '#ff9500';
@@ -1224,14 +1125,12 @@ function draw() {
         ctx.stroke();
     }
 
-    // Upright dots
     uprightDots.forEach(p => {
         const s = normToScreen(p.x, p.y);
         ctx.fillStyle = '#ffffff';
         ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
     });
 
-    // Active tap crosshair
     if (activeTap) {
         const s = normToScreen(activeTap.x, activeTap.y);
         ctx.strokeStyle='#ffff00'; ctx.lineWidth=2.5;
@@ -1241,7 +1140,6 @@ function draw() {
         ctx.stroke();
     }
 
-    // Trajectory markers
     const drawMarker = (pt, color, label, isNorm) => {
         if (!pt) return;
         const nx = isNorm ? pt.pos.x - 0.5 + (centerX||0.5) : pt.pos.x;
@@ -1261,7 +1159,6 @@ function draw() {
     drawMarker(halfDownPt, '#bf5af2', '½↓',       true);
     drawMarker(endPt,      '#ff3b30', 'Landing',  true);
 
-    // Trajectory curve
     const tpts = [startPt, halfUpPt, peakPt, halfDownPt, endPt].filter(Boolean).map(pt => {
         const nx = (pt !== startPt) ? pt.pos.x - 0.5 + (centerX||0.5) : pt.pos.x;
         return normToScreen(nx, pt.pos.y);
@@ -1276,9 +1173,6 @@ function draw() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Workflow state machine
-// ═══════════════════════════════════════════════════════════════════════
 function updateWorkflow() {
     if (!isVideoLoaded) return;
     const btn    = document.getElementById('btn-workflow');
@@ -1312,9 +1206,6 @@ function updateWorkflow() {
     };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Undo
-// ═══════════════════════════════════════════════════════════════════════
 function undoLast() {
     const i = currentStepIndex();
     const hasU = setupConfig.uprrightsVisible;
@@ -1344,20 +1235,13 @@ function undoLast() {
     requestDraw();
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Calculate & Report
-// ═══════════════════════════════════════════════════════════════════════
 function handleCalculateAndReport() {
     const tol = getUprightTolerances(setupConfig);
 
-    // If uprights were tapped, compute camera angular offset and adjusted centerX
     let adjustedCenterX = centerX;
     let uprightCenterX  = null;
     if (uprightDots.length === 2) {
         uprightCenterX  = (uprightDots[0].x + uprightDots[1].x) / 2;
-        // Shift: true lateral zero is upright center, not ball impact X.
-        // We keep centerX as impact (ball lined up) but note the offset.
-        // Pass it to the engine for drift correction.
     }
 
     const report = physics.calculate(
@@ -1367,13 +1251,9 @@ function handleCalculateAndReport() {
         ballTeePixelHeight, canvas.clientHeight,
         setupConfig.ballLengthIn,
         tol,
-        uprightCenterX  // null if not tapped
+        uprightCenterX  
     );
 
-    // Also compute good-from for both NFL and CFB uprights for reference rows
-    // For multi-standard comparison, apply the same ball offset adjustment
-    // that was applied in the main calculation (stored in report._adjustedTol).
-    // We re-derive the offset and apply it to NFL/CFB base tolerances.
     const ballOffsetYds = report._adjustedTol
         ? (report._adjustedTol.rightTol - getUprightTolerances(setupConfig).rightTol) * -1
         : 0;
@@ -1384,13 +1264,11 @@ function handleCalculateAndReport() {
     const nflGood = physics.calcMaxGoodExternal(report._vUp, report._vFwd, report._latCoeffs, report.kickDistance, nflTol);
     const cfbGood = physics.calcMaxGoodExternal(report._vUp, report._vFwd, report._latCoeffs, report.kickDistance, cfbTol);
 
-    // Save to history
     let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
     history.unshift({ ...report, date: new Date().toISOString(), config: setupConfig });
     if (history.length > 100) history.pop();
     localStorage.setItem('kickHistory', JSON.stringify(history));
 
-    // Populate report modal
     const uprightLabel = `${setupConfig.uprightType.toUpperCase()} Uprights · ${setupConfig.hashPosition.charAt(0).toUpperCase()+setupConfig.hashPosition.slice(1)} Hash`;
     document.getElementById('rep-upright-label').innerText = `Scoring Projection — ${uprightLabel}`;
     document.getElementById('rep-dist').innerText      = `${report.kickDistance} yds`;
@@ -1403,7 +1281,6 @@ function handleCalculateAndReport() {
     document.getElementById('rep-angle').innerText     = `${report.angle}°`;
     document.getElementById('rep-apex').innerText      = `${report.trueApexTime}s`;
 
-    // Multi-standard section (show when not custom)
     if (setupConfig.uprightType !== 'custom') {
         document.getElementById('rep-multi-section').style.display = 'block';
         document.getElementById('rep-nfl-good').innerText = `≤ ${Math.floor(nflGood)} yds`;
@@ -1415,16 +1292,13 @@ function handleCalculateAndReport() {
     document.getElementById('report-modal').style.display = 'flex';
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Reset
-// ═══════════════════════════════════════════════════════════════════════
 function resetAll() {
     scaleDots = []; ballTeeDots = []; uprightDots = [];
     ballTeePixelHeight = 0;
     activeTap = null;
     startPt = halfUpPt = peakPt = halfDownPt = endPt = null;
     centerX = null;
-    fitVideoToCanvas(); // resets camScale/camX/camY to fit
+    fitVideoToCanvas(); 
     if (isVideoLoaded) { video.pause(); video.currentTime = 0; scrubber.value = 0; }
     rebuildProgressDots();
     updateWorkflow();
@@ -1433,7 +1307,6 @@ function resetAll() {
 
 document.getElementById('btn-home').addEventListener('click', () => { window.location.href = 'index.html'; });
 
-// Init progress dots on load
 rebuildProgressDots();
 </script>
 </body>
