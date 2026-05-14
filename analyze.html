@@ -313,12 +313,10 @@
 </head>
 <body>
 
-<!-- ── Setup Modal ───────────────────────────────────────────────────── -->
 <div class="modal-overlay" id="setup-modal">
     <div class="modal-box">
         <h2>Kick Setup</h2>
 
-        <!-- Camera Distance -->
         <div class="modal-section">
             <div class="modal-section-title">Camera Distance</div>
             <div class="cam-depth-row">
@@ -328,7 +326,6 @@
             </div>
         </div>
 
-        <!-- Football Type -->
         <div class="modal-section">
             <div class="modal-section-title">Football Type</div>
             <div class="seg-control" id="ball-type-seg">
@@ -344,7 +341,6 @@
             </div>
         </div>
 
-        <!-- Upright Type -->
         <div class="modal-section">
             <div class="modal-section-title">Upright Type</div>
             <div class="seg-control" id="upright-type-seg">
@@ -364,7 +360,6 @@
             </div>
         </div>
 
-        <!-- Hash Position -->
         <div class="modal-section">
             <div class="modal-section-title">Hash Position</div>
             <div class="seg-control" id="hash-seg">
@@ -374,7 +369,6 @@
             </div>
         </div>
 
-        <!-- Visible Uprights -->
         <div class="modal-section">
             <div class="toggle-row">
                 <span>Uprights Visible in Video?</span>
@@ -389,7 +383,6 @@
     </div>
 </div>
 
-<!-- ── Top Bar ───────────────────────────────────────────────────────── -->
 <div class="sys-buttons">
     <button id="btn-home">Home</button>
     <button id="btn-reset" onclick="resetAll()">Reset</button>
@@ -398,27 +391,21 @@
     <input type="file" id="file-upload" accept="video/*">
 </div>
 
-<!-- ── Dashboard ─────────────────────────────────────────────────────── -->
 <div class="dashboard">
     <div class="results-box" id="status-text">Upload a video to begin.</div>
     <div class="progress-bar" id="progress-bar">
-        <!-- dots injected by JS based on step count -->
-    </div>
+        </div>
 </div>
 
-<!-- ── Viewport ──────────────────────────────────────────────────────── -->
 <div class="viewport-container" id="viewport-container">
     <div class="upload-placeholder" id="upload-placeholder"
          onclick="document.getElementById('file-upload').click()">
         Upload Video
     </div>
-    <!-- video is hidden, drawn onto canvas manually -->
     <video id="video-player" playsinline style="display:none;"></video>
-    <!-- canvas fills container, hidden until video loads -->
     <canvas id="overlay" style="display:none;"></canvas>
 </div>
 
-<!-- ── Controls ──────────────────────────────────────────────────────── -->
 <div class="controls" id="persistent-controls" style="display:none;">
     <div class="row" style="padding: 0 10px;">
         <span style="font-size:12px;font-weight:bold;width:45px;">Zoom:</span>
@@ -436,13 +423,11 @@
     </div>
 </div>
 
-<!-- ── Workflow Bar ───────────────────────────────────────────────────── -->
 <div class="workflow-bar">
     <button id="btn-undo" onclick="undoLast()" disabled>↩ Undo</button>
     <button id="btn-workflow" class="workflow-btn" disabled>Awaiting Video...</button>
 </div>
 
-<!-- ── Report Modal ───────────────────────────────────────────────────── -->
 <div id="report-modal">
     <div class="report-content">
         <h2 style="text-align:center;margin-top:0;">Actuarial Report</h2>
@@ -453,7 +438,6 @@
             <div class="report-row"><span>Drift Profile</span>   <span id="rep-miss" style="font-weight:bold;">--</span></div>
             <div class="report-row"><span>Drift at Landing</span><span id="rep-drift-yds" style="font-weight:bold;">-- yds</span></div>
         </div>
-        <!-- Per-upright type good-from rows, shown dynamically -->
         <div class="report-section" id="rep-multi-section" style="display:none;">
             <div class="report-header">Good From by Standard</div>
             <div class="report-row"><span>NFL Uprights</span>  <span class="text-green" id="rep-nfl-good">--</span></div>
@@ -517,7 +501,8 @@ let setupConfig = {
 // ═══════════════════════════════════════════════════════════════════════
 const video       = document.getElementById('video-player');
 const canvas      = document.getElementById('overlay');
-const ctx         = canvas.getContext('2d');
+// OPTIMIZATION: Turning off alpha channel for hardware acceleration boost
+const ctx         = canvas.getContext('2d', { alpha: false });
 const zoomWrapper = null; // removed — canvas fills container directly
 const scrubber    = document.getElementById('scrubber');
 const statusText  = document.getElementById('status-text');
@@ -865,7 +850,7 @@ function resizeCanvas() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (isVideoLoaded) fitVideoToCanvas();
 }
-window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+window.addEventListener('resize', () => { resizeCanvas(); requestDraw(); });
 
 // Fit video into canvas (like object-fit:contain), reset camera
 function fitVideoToCanvas() {
@@ -933,7 +918,7 @@ document.getElementById('zoom-slider').addEventListener('input', e => {
     document.getElementById('zoom-val').innerText = relZoom.toFixed(1) + 'x';
     const f = getZoomFocus();
     zoomAround(f.x, f.y, relZoom * getFitScale());
-    draw();
+    requestDraw();
 });
 
 // Zoom to newScale keeping screen point (sx,sy) fixed in image space
@@ -945,12 +930,30 @@ function zoomAround(sx, sy, newScale) {
     camY = sy - iy * camScale;
     syncZoomSlider();
 }
+
 video.addEventListener('timeupdate', () => {
     if (!isScrubbing) scrubber.value = video.currentTime;
-    draw(); // redraw frame on every timeupdate
+    requestDraw(); 
 });
-scrubber.addEventListener('input',  e => { isScrubbing = true;  video.currentTime = e.target.value; draw(); });
-scrubber.addEventListener('change', () => { isScrubbing = false; draw(); });
+
+// OPTIMIZATION: Throttled Scrubber
+let lastScrub = 0;
+scrubber.addEventListener('input',  e => { 
+    isScrubbing = true;  
+    const now = performance.now();
+    if (now - lastScrub > 50) {
+        video.currentTime = e.target.value; 
+        lastScrub = now;
+        requestDraw();
+    }
+});
+
+scrubber.addEventListener('change', e => { 
+    isScrubbing = false; 
+    video.currentTime = e.target.value; 
+    requestDraw(); 
+});
+
 function togglePlay() {
     if (video.paused) { video.play();  document.getElementById('btn-playpause').innerText = '⏸'; }
     else              { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; }
@@ -990,7 +993,7 @@ function placeTap(clientX, clientY) {
     if (!coords) return;
     activeTap = coords;
     updateWorkflow();
-    draw();
+    requestDraw();
 }
 
 // ── MOBILE ────────────────────────────────────────────────────────────
@@ -1047,7 +1050,7 @@ if (isTouchDevice) {
             // Update zoom focus so slider stays in sync with pinch midpoint
             zoomFocusX = sx;
             zoomFocusY = sy;
-            draw();
+            requestDraw();
             touchMoved = true;
         } else if (e.touches.length === 1 && touchDragLastX !== null) {
             // Single finger drag — pan
@@ -1060,7 +1063,7 @@ if (isTouchDevice) {
             clampCamera();
             touchDragLastX = t.clientX;
             touchDragLastY = t.clientY;
-            draw();
+            requestDraw();
         }
     }, { passive: false });
 
@@ -1095,7 +1098,7 @@ if (isTouchDevice) {
             camY += e.clientY - mouseDownPos.y;
             clampCamera();
             mouseDownPos = { x: e.clientX, y: e.clientY };
-            draw();
+            requestDraw();
         }
     });
 
@@ -1132,6 +1135,19 @@ if (isTouchDevice) {
 // ═══════════════════════════════════════════════════════════════════════
 //  Draw
 // ═══════════════════════════════════════════════════════════════════════
+
+// OPTIMIZATION: requestAnimationFrame handler
+let drawPending = false;
+function requestDraw() {
+    if (!drawPending) {
+        drawPending = true;
+        requestAnimationFrame(() => {
+            draw();
+            drawPending = false;
+        });
+    }
+}
+
 function draw() {
     if (!isVideoLoaded) return;
     const w = canvas.clientWidth;
@@ -1292,7 +1308,7 @@ function updateWorkflow() {
         if (!step.ready()) return;
         step.confirm();
         updateWorkflow();
-        draw();
+        requestDraw();
     };
 }
 
@@ -1325,7 +1341,7 @@ function undoLast() {
     }
     activeTap = null;
     updateWorkflow();
-    draw();
+    requestDraw();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1412,7 +1428,7 @@ function resetAll() {
     if (isVideoLoaded) { video.pause(); video.currentTime = 0; scrubber.value = 0; }
     rebuildProgressDots();
     updateWorkflow();
-    draw();
+    requestDraw();
 }
 
 document.getElementById('btn-home').addEventListener('click', () => { window.location.href = 'index.html'; });
