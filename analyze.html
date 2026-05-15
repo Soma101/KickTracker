@@ -4,1310 +4,266 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>KickTracker App</title>
-    <script src="physics-engine.js"></script>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="KickTracker">
+    <title>Kick Tracker</title>
     <style>
-        * { box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100dvh;
             margin: 0;
             background-color: #000;
             color: #fff;
-            display: flex;
-            flex-direction: column;
-            height: 100dvh;
-            overflow: hidden;
-        }
-
-        /* ── Top Bar ── */
-        .sys-buttons {
-            display: flex;
-            justify-content: flex-end;
-            gap: 8px;
-            padding: 10px;
-            padding-top: max(10px, env(safe-area-inset-top));
-            padding-left: max(10px, env(safe-area-inset-left));
-            padding-right: max(10px, env(safe-area-inset-right));
-            background-color: #1c1c1e;
-            flex-shrink: 0;
-        }
-        .sys-buttons button {
-            padding: 6px 12px;
-            border-radius: 6px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        #btn-home   { background: #007aff; color: white; margin-right: auto; }
-        #btn-reset  { background: #3a3a3c; color: white; }
-        #file-upload { display: none; }
-
-        /* ── Dashboard ── */
-        .dashboard {
-            background-color: #1c1c1e;
-            padding: 8px 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            flex-shrink: 0;
-        }
-        .row { display: flex; align-items: center; gap: 10px; justify-content: center; }
-        input[type="range"] { padding: 4px; border-radius: 4px; background: #2c2c2e; flex-grow: 1; }
-        .results-box {
-            background-color: #2c2c2e;
-            padding: 8px;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 14px;
             text-align: center;
-            color: #007aff;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            box-sizing: border-box;
         }
-        .progress-bar {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 5px;
-            padding: 2px 0;
-        }
-        .progress-dot {
-            width: 9px; height: 9px;
-            border-radius: 50%;
-            background: #3a3a3c;
-            transition: background 0.2s;
-            flex-shrink: 0;
-        }
-        .progress-dot.done   { background: #34c759; }
-        .progress-dot.active { background: #ffff00; }
 
-        /* ── Viewport ── */
-        .viewport-container {
-            flex: 1;
-            min-height: 0;
-            position: relative;
-            overflow: hidden;
-            background: #000;
-        }
-        video { display: none; }
-        canvas {
-            display: block;
-            position: absolute;
-            top: 0; left: 0;
+        h1 { font-size: 40px; font-weight: 900; margin: 0 0 10px 0; }
+        h2 { font-size: 18px; font-weight: 600; color: #8e8e93; margin: 0 0 40px 0; }
+
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
             width: 100%;
-            height: 100%;
-            touch-action: none;
+            max-width: 250px;
         }
-        .upload-placeholder {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: #8e8e93;
-            cursor: pointer;
-            border: 2px dashed #3a3a3c;
-            padding: 30px;
+
+        .main-btn {
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            padding: 16px;
+            border: none;
             border-radius: 12px;
-            z-index: 5;
+            cursor: pointer;
+            width: 100%;
+        }
+        #btn-record  { background-color: #ff3b30; }
+        #btn-analyze { background-color: #007aff; }
+        #btn-history { background-color: #34c759; }
+
+        .how-to-btn {
+            margin-top: 14px;
+            background: #ff9500;
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            padding: 10px 20px;
+            cursor: pointer;
+            width: 100%;
+            max-width: 250px;
         }
 
-        /* ── Controls ── */
-        .controls {
-            background-color: #1c1c1e;
-            padding: 8px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            flex-shrink: 0;
-        }
-        .playback-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 20px;
-        }
-        .playback-row button {
-            background: #2c2c2e; border: none; color: white;
-            font-size: 14px; font-weight: bold; cursor: pointer;
-            padding: 8px 16px; border-radius: 6px;
-        }
-
-        /* ── Workflow bar ── */
-        .workflow-bar {
-            background-color: #1c1c1e;
-            padding: 12px;
-            padding-bottom: max(12px, env(safe-area-inset-bottom));
-            padding-left: max(12px, env(safe-area-inset-left));
-            padding-right: max(12px, env(safe-area-inset-right));
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-        .workflow-btn {
-            flex: 1; padding: 14px; font-size: 17px; font-weight: bold;
-            border: none; border-radius: 12px; cursor: pointer;
-            color: white; background: #3a3a3c;
-        }
-        #btn-undo {
-            flex: 0 0 auto; padding: 14px 18px; font-size: 17px; font-weight: bold;
-            border: none; border-radius: 12px; cursor: pointer;
-            color: white; background: #3a3a3c;
-        }
-        #btn-undo:disabled { opacity: 0.3; cursor: default; }
-
-        /* ── Setup Modal ── */
-        .modal-overlay {
+        /* ── Guide Sheet ── */
+        .guide-overlay {
             display: none;
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85);
-            z-index: 200;
-            align-items: center;
+            z-index: 100;
+            align-items: flex-end;
             justify-content: center;
-            padding: 16px;
-            padding-top: max(16px, env(safe-area-inset-top));
-            padding-bottom: max(16px, env(safe-area-inset-bottom));
-            padding-left: max(16px, env(safe-area-inset-left));
-            padding-right: max(16px, env(safe-area-inset-right));
+            padding-bottom: env(safe-area-inset-bottom);
         }
-        .modal-overlay.visible { display: flex; }
-        .modal-box {
+        .guide-overlay.visible { display: flex; }
+        .guide-sheet {
             background: #1c1c1e;
             width: 100%;
-            max-width: 420px;
-            border-radius: 16px;
-            padding: 20px;
+            max-width: 480px;
+            border-radius: 20px 20px 0 0;
+            padding: 16px 20px 28px;
+            max-height: 85dvh;
             display: flex;
             flex-direction: column;
-            gap: 16px;
-            max-height: 90dvh;
-            overflow-y: auto;
         }
-        .modal-box h2 { margin: 0; text-align: center; font-size: 20px; }
-        .modal-section {
-            background: #2c2c2e;
-            border-radius: 10px;
-            padding: 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+        .guide-handle {
+            width: 36px; height: 4px;
+            background: #3a3a3c;
+            border-radius: 2px;
+            margin: 0 auto 16px;
         }
-        .modal-section-title {
-            font-size: 12px;
-            font-weight: bold;
-            color: #8e8e93;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+        .guide-title {
+            font-size: 20px; font-weight: 800;
+            text-align: center; margin: 0 0 16px;
         }
-        .seg-control {
-            display: flex;
-            background: #1c1c1e;
-            border-radius: 8px;
-            padding: 2px;
-            gap: 2px;
+        .guide-scroll { overflow-y: auto; flex: 1; }
+        .guide-section {
+            background: #2c2c2e; border-radius: 12px;
+            padding: 14px; margin-bottom: 12px;
         }
-        .seg-btn {
-            flex: 1; padding: 8px 4px; border: none; border-radius: 6px;
-            background: transparent; color: #8e8e93;
-            font-weight: bold; font-size: 13px; cursor: pointer;
-            transition: all 0.15s;
+        .guide-section-title {
+            font-size: 13px; font-weight: 800;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            margin: 0 0 10px;
         }
-        .seg-btn.active { background: #3a3a3c; color: white; }
-        .custom-inputs {
-            display: none;
-            flex-direction: column;
-            gap: 8px;
+        .guide-section-title.red    { color: #ff3b30; }
+        .guide-section-title.blue   { color: #007aff; }
+        .guide-section-title.green  { color: #34c759; }
+        .guide-section-title.orange { color: #ff9500; }
+        .guide-step {
+            display: flex; gap: 10px;
+            margin-bottom: 8px; font-size: 14px;
+            line-height: 1.4; color: #d1d1d6;
         }
-        .custom-inputs.visible { display: flex; }
-        .modal-label {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 14px;
-            font-weight: bold;
+        .guide-step:last-child { margin-bottom: 0; }
+        .step-num {
+            flex-shrink: 0; width: 20px; height: 20px;
+            background: #3a3a3c; border-radius: 50%;
+            font-size: 11px; font-weight: 800;
+            display: flex; align-items: center; justify-content: center;
+            color: white; margin-top: 1px;
         }
-        .modal-label input[type="number"] {
-            width: 80px; padding: 6px 8px; border-radius: 6px;
-            border: 1px solid #3a3a3c; background: #1c1c1e;
-            color: white; font-size: 14px; text-align: right;
+        .guide-tip {
+            font-size: 13px; color: #d1d1d6;
+            margin-top: 8px; padding-top: 8px;
+            border-top: 1px solid #3a3a3c; line-height: 1.4;
         }
-        .toggle-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        .toggle { position: relative; width: 51px; height: 31px; flex-shrink: 0; }
-        .toggle input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider {
-            position: absolute; cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: #3a3a3c; border-radius: 31px;
-            transition: 0.2s;
-        }
-        .toggle-slider:before {
-            position: absolute; content: "";
-            height: 27px; width: 27px; left: 2px; bottom: 2px;
-            background: white; border-radius: 50%; transition: 0.2s;
-        }
-        .toggle input:checked + .toggle-slider { background: #34c759; }
-        .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
-
-        .cam-depth-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
-            font-weight: bold;
-        }
-        .cam-depth-row input[type="range"] { flex: 1; }
-
-        .modal-confirm-btn {
-            width: 100%; padding: 16px; background: #007aff; color: white;
-            border: none; border-radius: 12px; font-weight: bold;
-            font-size: 17px; cursor: pointer;
-        }
-
-        /* ── Report Modal ── */
-        #report-modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
-            z-index: 100;
-            align-items: center;
-            justify-content: center;
-            padding: 16px;
-        }
-        .report-content {
-            background: #1c1c1e; width: 100%; max-width: 400px;
-            border-radius: 16px; padding: 20px;
-            max-height: 90dvh; overflow-y: auto;
-        }
-        .report-section {
-            background: #2c2c2e; border-radius: 10px;
-            padding: 10px 15px; margin-bottom: 15px;
-        }
-        .report-header { font-weight: bold; margin-bottom: 10px; font-size: 13px; color: #8e8e93; }
-        .report-row {
-            display: flex; justify-content: space-between;
-            margin-bottom: 8px; font-size: 15px;
-            border-bottom: 1px solid #3a3a3c; padding-bottom: 8px;
-        }
-        .report-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-        .text-green  { color: #34c759; font-weight: bold; }
-        .text-orange { color: #ff9500; font-weight: bold; }
-        .text-red    { color: #ff3b30; font-weight: bold; }
-        .btn-close-modal {
-            width: 100%; padding: 14px; background: #007aff; color: white;
-            border: none; border-radius: 10px; font-weight: bold;
-            font-size: 16px; cursor: pointer; margin-top: 10px;
+        .btn-close-guide {
+            margin-top: 14px; width: 100%; padding: 14px;
+            background: #007aff; color: white; border: none;
+            border-radius: 12px; font-weight: bold;
+            font-size: 16px; cursor: pointer; flex-shrink: 0;
         }
     </style>
 </head>
 <body>
 
-<div class="modal-overlay" id="setup-modal">
-    <div class="modal-box">
-        <h2>Kick Setup</h2>
+    <h1>Kick Tracker</h1>
+    <h2>Optics & Physics Engine</h2>
 
-        <div class="modal-section">
-            <div class="modal-section-title">Camera Distance</div>
-            <div class="cam-depth-row">
-                <span>Cam Depth:</span>
-                <input type="range" id="setup-cam-depth" min="3" max="50" step="1" value="15">
-                <span id="setup-depth-val" style="min-width:32px; text-align:right;">15 yd</span>
-            </div>
-        </div>
+    <div class="button-container">
+        <button class="main-btn" id="btn-record">Record Video</button>
+        <button class="main-btn" id="btn-analyze">Analyze Video</button>
+        <button class="main-btn" id="btn-history">Kick History</button>
+    </div>
 
-        <div class="modal-section">
-            <div class="modal-section-title">Football Type</div>
-            <div class="seg-control" id="ball-type-seg">
-                <button class="seg-btn active" data-val="nfl">NFL</button>
-                <button class="seg-btn" data-val="cfb">CFB</button>
-                <button class="seg-btn" data-val="custom">Custom</button>
-            </div>
-            <div class="custom-inputs" id="ball-custom-inputs">
-                <div class="modal-label">
-                    Ball Length (in)
-                    <input type="number" id="ball-custom-len" value="11" min="6" max="14" step="0.1">
+    <button class="how-to-btn" id="btn-how-to">How To Use ↑</button>
+
+    <!-- Guide Sheet -->
+    <div class="guide-overlay" id="guide-overlay">
+        <div class="guide-sheet">
+            <div class="guide-handle"></div>
+            <div class="guide-title">How To Use</div>
+            <div class="guide-scroll">
+
+                <!-- Navigation card -->
+                <div style="background:#2c2c2e;border-radius:12px;padding:14px;margin-bottom:12px;display:flex;gap:16px;">
+                    <div style="flex:1;text-align:center;">
+                        <div style="font-size:28px;margin-bottom:6px;">📱</div>
+                        <div style="font-size:12px;font-weight:800;color:#ff9500;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Mobile</div>
+                        <div style="font-size:13px;color:#d1d1d6;line-height:1.5;">
+                            <b style="color:#fff">Tap</b> to place a point<br>
+                            <b style="color:#fff">Tap &amp; drag</b> to pan<br>
+                            <b style="color:#fff">Pinch</b> to zoom
+                        </div>
+                    </div>
+                    <div style="width:1px;background:#3a3a3c;flex-shrink:0;"></div>
+                    <div style="flex:1;text-align:center;">
+                        <div style="font-size:28px;margin-bottom:6px;">💻</div>
+                        <div style="font-size:12px;font-weight:800;color:#007aff;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Laptop</div>
+                        <div style="font-size:13px;color:#d1d1d6;line-height:1.5;">
+                            <b style="color:#fff">Click</b> to place a point<br>
+                            <b style="color:#fff">Click &amp; drag</b> to pan<br>
+                            <b style="color:#fff">Slider</b> to zoom
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <div class="modal-section">
-            <div class="modal-section-title">Upright Type</div>
-            <div class="seg-control" id="upright-type-seg">
-                <button class="seg-btn active" data-val="nfl">NFL</button>
-                <button class="seg-btn" data-val="cfb">CFB</button>
-                <button class="seg-btn" data-val="custom">Custom</button>
-            </div>
-            <div class="custom-inputs" id="upright-custom-inputs">
-                <div class="modal-label">
-                    Width inner-to-inner (ft)
-                    <input type="number" id="upright-custom-width" value="18.5" min="10" max="40" step="0.1">
+                <!-- Record -->
+                <div class="guide-section">
+                    <div class="guide-section-title red">🎥 Record Video</div>
+                    <div class="guide-step"><div class="step-num">1</div><div>Set your camera directly behind the ball, lined up with the uprights. Keep it as steady as possible.</div></div>
+                    <div class="guide-step"><div class="step-num">2</div><div>Tap Record. Press START before the snap and STOP after the ball lands.</div></div>
+                    <div class="guide-step"><div class="step-num">3</div><div>Review the clip — tap Use Video to proceed to analysis, or Retake to re-record.</div></div>
+                    <div class="guide-tip">💡 Tip: Film from 10–20 yards behind the ball at ground level for best accuracy.</div>
                 </div>
-                <div class="modal-label">
-                    Crossbar height (ft)
-                    <input type="number" id="upright-custom-height" value="10" min="5" max="20" step="0.1">
+
+                <!-- Setup -->
+                <div class="guide-section">
+                    <div class="guide-section-title blue">⚙️ Kick Setup</div>
+                    <div class="guide-step"><div class="step-num">1</div><div>Set Camera Depth — how far behind the ball your camera was placed (in yards).</div></div>
+                    <div class="guide-step"><div class="step-num">2</div><div>Choose Football Type (NFL 11" / CFB 10.5" / Custom) — used to calibrate ball size in the frame.</div></div>
+                    <div class="guide-step"><div class="step-num">3</div><div>Choose Upright Type (NFL 18.5ft / CFB 23.4ft / Custom) — sets the target window for Good From calculations.</div></div>
+                    <div class="guide-step"><div class="step-num">4</div><div>Select Hash Position (Left / Middle / Right) — adjusts the lateral tolerance window for your kick location.</div></div>
+                    <div class="guide-step"><div class="step-num">5</div><div>Toggle Uprights Visible if the goal posts appear in your video — this enables a camera angle correction step.</div></div>
                 </div>
+
+                <!-- Analyze -->
+                <div class="guide-section">
+                    <div class="guide-section-title blue">📐 Analyze Video — Step by Step</div>
+                    <div class="guide-step"><div class="step-num">1</div><div><b style="color:#fff">Scale Dots:</b> Tap two points on the ground exactly 10 yards apart in the forward direction (toward the uprights) — e.g. two consecutive yard line markings near the ball. These calibrate real-world distance.</div></div>
+                    <div class="guide-step"><div class="step-num">2</div><div><b style="color:#fff">Ball Size:</b> Pause on a still frame just before the kick. Tap the top then the bottom of the ball. The midpoint becomes the impact baseline.</div></div>
+                    <div class="guide-step"><div class="step-num">3</div><div><b style="color:#fff">Uprights (optional):</b> If visible, scrub to the impact frame and tap the left then right upright post. This corrects for camera offset from center.</div></div>
+                    <div class="guide-step"><div class="step-num">4</div><div><b style="color:#fff">Half-Up:</b> Scrub to roughly halfway through the ball's rise. Tap the ball.</div></div>
+                    <div class="guide-step"><div class="step-num">5</div><div><b style="color:#fff">Apex:</b> Scrub to approximately the highest point of the ball's arc. Tap the ball.</div></div>
+                    <div class="guide-step"><div class="step-num">6</div><div><b style="color:#fff">Half-Down:</b> Scrub to roughly halfway through the ball's descent. Tap the ball.</div></div>
+                    <div class="guide-step"><div class="step-num">7</div><div><b style="color:#fff">Landing:</b> Scrub to the frame where the ball hits the ground (or nets). Tap the ball.</div></div>
+                    <div class="guide-tip">💡 Navigation: Use the zoom slider or pinch (mobile) to zoom in. To move around — tap &amp; drag on mobile, click &amp; drag on laptop. Use -1 Fr / +1 Fr to step frame by frame.</div>
+                </div>
+
+                <!-- Report -->
+                <div class="guide-section">
+                    <div class="guide-section-title orange">📊 Reading the Report</div>
+                    <div class="guide-step"><div class="step-num">•</div><div><b style="color:#fff">Kick Distance:</b> Predicted total distance the ball traveled in yards.</div></div>
+                    <div class="guide-step"><div class="step-num">•</div><div><b style="color:#fff">Good From:</b> The maximum distance this kick would be good from, given its drift and height profile.</div></div>
+                    <div class="guide-step"><div class="step-num">•</div><div><b style="color:#fff">Drift Profile:</b> Whether the ball drifted Left, Right, or flew Straight through the uprights.</div></div>
+                    <div class="guide-step"><div class="step-num">•</div><div><b style="color:#fff">Drift at Landing:</b> Exact lateral distance (in yards) from upright center at predicted landing point.</div></div>
+                    <div class="guide-step"><div class="step-num">•</div><div><b style="color:#fff">Hang Time:</b> Total time the ball was in the air from impact to landing.</div></div>
+                    <div class="guide-step"><div class="step-num">•</div><div><b style="color:#fff">Peak Height:</b> Maximum height the ball reached in feet.</div></div>
+                    <div class="guide-step"><div class="step-num">•</div><div><b style="color:#fff">Launch Angle:</b> The angle of the ball's trajectory off the foot in degrees.</div></div>
+                </div>
+
+                <!-- History -->
+                <div class="guide-section">
+                    <div class="guide-section-title green">📋 Kick History</div>
+                    <div class="guide-step"><div class="step-num">•</div><div>Every completed analysis is automatically saved. View past kicks sorted newest first.</div></div>
+                    <div class="guide-step"><div class="step-num">•</div><div>Up to 100 kicks are stored on this device. Use Clear All History to reset.</div></div>
+                </div>
+
             </div>
-        </div>
-
-        <div class="modal-section">
-            <div class="modal-section-title">Hash Position</div>
-            <div class="seg-control" id="hash-seg">
-                <button class="seg-btn" data-val="left">Left</button>
-                <button class="seg-btn active" data-val="middle">Middle</button>
-                <button class="seg-btn" data-val="right">Right</button>
-            </div>
-        </div>
-
-        <div class="modal-section">
-            <div class="toggle-row">
-                <span>Uprights Visible in Video?</span>
-                <label class="toggle">
-                    <input type="checkbox" id="setup-uprights-visible">
-                    <span class="toggle-slider"></span>
-                </label>
-            </div>
-        </div>
-
-        <button class="modal-confirm-btn" id="setup-confirm-btn">Start Analysis</button>
-    </div>
-</div>
-
-<div class="sys-buttons">
-    <button id="btn-home">Home</button>
-    <button id="btn-reset" onclick="resetAll()">Reset</button>
-    <button id="btn-settings" onclick="openSetup()">⚙ Settings</button>
-    <button id="btn-new" onclick="document.getElementById('file-upload').click()">New Video</button>
-    <input type="file" id="file-upload" accept="video/*">
-</div>
-
-<div class="dashboard">
-    <div class="results-box" id="status-text">Upload a video to begin.</div>
-    <div class="progress-bar" id="progress-bar">
-    </div>
-</div>
-
-<div class="viewport-container" id="viewport-container">
-    <div class="upload-placeholder" id="upload-placeholder" onclick="document.getElementById('file-upload').click()">
-        Upload Video
-    </div>
-    <video id="video-player" playsinline muted style="display:none;"></video>
-    <canvas id="overlay" style="display:none;"></canvas>
-</div>
-
-<div class="controls" id="persistent-controls" style="display:none;">
-    <div class="row" style="padding: 0 10px;">
-        <span style="font-size:12px;font-weight:bold;width:45px;">Zoom:</span>
-        <input type="range" id="zoom-slider" min="1" max="10" step="0.1" value="1">
-        <span id="zoom-val" style="font-size:12px;width:35px;text-align:right;">1x</span>
-    </div>
-    <div id="playback-controls">
-        <input type="range" id="scrubber" min="0" max="1" step="0.001" value="0" style="width:100%; margin-bottom:8px;">
-        <div class="playback-row">
-            <button onclick="stepFrame(-1)">-1 Fr</button>
-            <button id="btn-playpause" onclick="togglePlay()" style="font-size:18px;padding:6px 20px;">▶</button>
-            <button onclick="stepFrame(1)">+1 Fr</button>
+            <!-- Reset tutorial button -->
+            <button id="btn-reset-tutorial" style="
+                margin-top: 8px; width: 100%; padding: 12px;
+                background: #2c2c2e; color: #ff9500;
+                border: none; border-radius: 12px; font-weight: bold;
+                font-size: 14px; cursor: pointer; flex-shrink: 0;
+            ">↺ Reset Step-by-Step Tutorials</button>
+            <button class="btn-close-guide" id="btn-close-guide">Got It</button>
         </div>
     </div>
-</div>
 
-<div class="workflow-bar">
-    <button id="btn-undo" onclick="undoLast()" disabled>↩ Undo</button>
-    <button id="btn-workflow" class="workflow-btn" disabled>Awaiting Video...</button>
-</div>
-
-<div id="report-modal">
-    <div class="report-content">
-        <h2 style="text-align:center;margin-top:0;">Actuarial Report</h2>
-        <div class="report-section">
-            <div class="report-header" id="rep-upright-label">Scoring Projection — NFL Uprights · Middle Hash</div>
-            <div class="report-row"><span>Kick Distance</span>   <span class="text-green"  id="rep-dist">-- yds</span></div>
-            <div class="report-row"><span>Good From</span>       <span class="text-green"  id="rep-max">≤ 0 yds</span></div>
-            <div class="report-row"><span>Drift Profile</span>   <span id="rep-miss" style="font-weight:bold;">--</span></div>
-            <div class="report-row"><span>Drift at Landing</span><span id="rep-drift-yds" style="font-weight:bold;">-- yds</span></div>
-        </div>
-        <div class="report-section" id="rep-multi-section" style="display:none;">
-            <div class="report-header">Good From by Standard</div>
-            <div class="report-row"><span>NFL Uprights</span>  <span class="text-green" id="rep-nfl-good">--</span></div>
-            <div class="report-row"><span>CFB Uprights</span>  <span class="text-green" id="rep-cfb-good">--</span></div>
-        </div>
-        <div class="report-section">
-            <div class="report-header">Kinematics</div>
-            <div class="report-row"><span>Total Hang Time</span><span id="rep-time"   style="font-weight:bold;">--s</span></div>
-            <div class="report-row"><span>Peak Height</span>   <span id="rep-height" style="font-weight:bold;">-- ft</span></div>
-            <div class="report-row"><span>Launch Angle</span>  <span id="rep-angle"  class="text-orange">--°</span></div>
-            <div class="report-row"><span>True Apex Time</span><span id="rep-apex"   style="font-weight:bold;">--s</span></div>
-        </div>
-        <button class="btn-close-modal" onclick="document.getElementById('report-modal').style.display='none'">
-            Close Report
-        </button>
-    </div>
-</div>
-
-<script>
-const fps = 30;
-const BALL_LENGTHS = { nfl: 11, cfb: 10.5 };
-const UPRIGHT_SPECS = {
-    nfl: { widthFt: 18.5, crossbarFt: 10 },
-    cfb: { widthFt: 23.4, crossbarFt: 10 },
-};
-const HASH_OFFSETS_FT = {
-    nfl:  { left: -9.25,  middle: 0, right: 9.25  },
-    cfb:  { left: -26.67, middle: 0, right: 26.67 },
-    custom: { left: 0, middle: 0, right: 0 }, 
-};
-
-let setupConfig = {
-    cameraDistance:  15,
-    ballType:        'nfl',   
-    ballLengthIn:    11,
-    uprightType:     'nfl',   
-    uprightWidthFt:  18.5,
-    crossbarFt:      10,
-    hashPosition:    'middle',
-    uprrightsVisible: false,
-};
-
-const video       = document.getElementById('video-player');
-const canvas      = document.getElementById('overlay');
-// OPTIMIZATION: Hardware acceleration unlock
-const ctx         = canvas.getContext('2d', { alpha: false });
-const scrubber    = document.getElementById('scrubber');
-const statusText  = document.getElementById('status-text');
-
-let isVideoLoaded     = false;
-let isScrubbing       = false;
-let camScale  = 1.0;   
-let camX      = 0;     
-let camY      = 0;     
-let imgW      = 0;     
-let imgH      = 0;     
-const zoomLevel = { get value() { return camScale; } }; 
-
-let scaleDots          = [];
-let ballTeeDots        = [];    
-let ballTeePixelHeight = 0;
-let uprightDots        = [];    
-let activeTap          = null;
-let startPt            = null;
-let halfUpPt           = null;
-let peakPt             = null;
-let halfDownPt         = null;
-let endPt              = null;
-let centerX            = null;  
-
-const physics = new KickPhysicsEngine();
-
-function openSetup() {
-    document.getElementById('setup-modal').classList.add('visible');
-}
-
-function buildSegControl(segId, onSelect) {
-    const seg = document.getElementById(segId);
-    seg.querySelectorAll('.seg-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            seg.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            onSelect(btn.dataset.val);
+    <script src="index.js"></script>
+    <script>
+        document.getElementById('btn-how-to').addEventListener('click', () => {
+            document.getElementById('guide-overlay').classList.add('visible');
         });
-    });
-}
-
-document.getElementById('setup-cam-depth').addEventListener('input', e => {
-    document.getElementById('setup-depth-val').innerText = e.target.value + ' yd';
-});
-
-buildSegControl('ball-type-seg', val => {
-    document.getElementById('ball-custom-inputs').classList.toggle('visible', val === 'custom');
-});
-
-buildSegControl('upright-type-seg', val => {
-    document.getElementById('upright-custom-inputs').classList.toggle('visible', val === 'custom');
-});
-
-buildSegControl('hash-seg', () => {});
-
-document.getElementById('setup-confirm-btn').addEventListener('click', () => {
-    const ballSeg    = document.querySelector('#ball-type-seg .seg-btn.active').dataset.val;
-    const uprightSeg = document.querySelector('#upright-type-seg .seg-btn.active').dataset.val;
-    const hashSeg    = document.querySelector('#hash-seg .seg-btn.active').dataset.val;
-
-    setupConfig.cameraDistance   = parseFloat(document.getElementById('setup-cam-depth').value);
-    setupConfig.ballType         = ballSeg;
-    setupConfig.ballLengthIn     = ballSeg === 'nfl' ? 11
-                                 : ballSeg === 'cfb' ? 10.5
-                                 : parseFloat(document.getElementById('ball-custom-len').value) || 11;
-    setupConfig.uprightType      = uprightSeg;
-    setupConfig.uprightWidthFt   = uprightSeg === 'nfl'    ? 18.5
-                                 : uprightSeg === 'cfb'    ? 23.4
-                                 : parseFloat(document.getElementById('upright-custom-width').value) || 18.5;
-    setupConfig.crossbarFt       = uprightSeg === 'custom'
-                                 ? parseFloat(document.getElementById('upright-custom-height').value) || 10
-                                 : 10;
-    setupConfig.hashPosition     = hashSeg;
-    setupConfig.uprrightsVisible = document.getElementById('setup-uprights-visible').checked;
-
-    document.getElementById('setup-modal').classList.remove('visible');
-
-    if (isVideoLoaded) { resetAll(); }
-});
-
-function getUprightTolerances(cfg) {
-    const halfWidthYds = (cfg.uprightWidthFt / 2) / 3; 
-
-    let hashOffsetFt = 0;
-    if (cfg.hashPosition !== 'middle') {
-        const spec = HASH_OFFSETS_FT[cfg.uprightType] || HASH_OFFSETS_FT['nfl'];
-        hashOffsetFt = spec[cfg.hashPosition] || 0;
-    }
-    const hashOffsetYds = hashOffsetFt / 3;
-
-    const leftTol  = halfWidthYds + hashOffsetYds;  
-    const rightTol = halfWidthYds - hashOffsetYds;  
-
-    return { leftTol, rightTol, crossbarFt: cfg.crossbarFt, halfWidthYds };
-}
-
-function getSteps() {
-    const steps = [];
-    let n = 0;
-
-    steps.push({
-        id: 'scale1',
-        status: () => `Step ${++n} of ${totalSteps()}: Tap 1st scale reference dot (10 yds apart)`,
-        label: 'CONFIRM 1ST DOT',
-        color: '#007aff',
-        ready: () => activeTap !== null,
-        confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
-    });
-    steps.push({
-        id: 'scale2',
-        status: () => `Step ${n} of ${totalSteps()}: Tap 2nd scale reference dot`,
-        label: 'CONFIRM 2ND DOT',
-        color: '#007aff',
-        ready: () => activeTap !== null,
-        confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
-    });
-    steps.push({
-        id: 'ballTop',
-        status: () => `Step ${n} of ${totalSteps()}: Pause on still frame before kick. Tap the TOP of the ball.`,
-        label: 'CONFIRM BALL TOP',
-        color: '#ff9500',
-        ready: () => activeTap !== null,
-        confirm: () => { ballTeeDots[0] = {...activeTap}; activeTap = null; }
-    });
-    steps.push({
-        id: 'ballBottom',
-        status: () => `Step ${n} of ${totalSteps()}: Tap the BOTTOM of the ball (same frame).`,
-        label: 'CONFIRM BALL BOTTOM',
-        color: '#ff9500',
-        ready: () => activeTap !== null,
-        confirm: () => {
-            ballTeeDots[1] = {...activeTap};
-            ballTeePixelHeight = Math.abs(ballTeeDots[0].y - ballTeeDots[1].y) * canvas.clientHeight;
-            const cx = (ballTeeDots[0].x + ballTeeDots[1].x) / 2;
-            const cy = (ballTeeDots[0].y + ballTeeDots[1].y) / 2;
-            centerX = cx;
-            startPt = { time: video.currentTime, pos: { x: cx, y: cy } };
-            activeTap = null;
-        }
-    });
-
-    if (setupConfig.uprrightsVisible) {
-        steps.push({
-            id: 'uprightLeft',
-            status: () => `Step ${n} of ${totalSteps()}: Now scrub to IMPACT frame. Tap the LEFT upright post.`,
-            label: 'CONFIRM LEFT POST',
-            color: '#ffffff',
-            ready: () => activeTap !== null,
-            confirm: () => { uprightDots[0] = {...activeTap}; activeTap = null; }
+        document.getElementById('btn-close-guide').addEventListener('click', () => {
+            document.getElementById('guide-overlay').classList.remove('visible');
         });
-        steps.push({
-            id: 'uprightRight',
-            status: () => `Step ${n} of ${totalSteps()}: Tap the RIGHT upright post (same frame).`,
-            label: 'CONFIRM RIGHT POST',
-            color: '#ffffff',
-            ready: () => activeTap !== null,
-            confirm: () => { uprightDots[1] = {...activeTap}; activeTap = null; }
-        });
-    }
-
-    steps.push({
-        id: 'halfUp',
-        status: () => `Step ${n} of ${totalSteps()}: Scrub to HALF-WAY UP. Tap the ball.`,
-        label: 'MARK HALF-UP',
-        color: '#5ac8fa',
-        ready: () => activeTap !== null && startPt !== null && video.currentTime > startPt.time,
-        confirm: () => { halfUpPt = { time: video.currentTime, pos: normalizedPos(activeTap) }; activeTap = null; }
-    });
-    steps.push({
-        id: 'apex',
-        status: () => `Step ${n} of ${totalSteps()}: Scrub to APEX (approx highest point). Tap the ball.`,
-        label: 'MARK APEX',
-        color: '#ff9500',
-        ready: () => activeTap !== null && halfUpPt !== null && video.currentTime > halfUpPt.time,
-        confirm: () => { peakPt = { time: video.currentTime, pos: normalizedPos(activeTap) }; activeTap = null; }
-    });
-    steps.push({
-        id: 'halfDown',
-        status: () => `Step ${n} of ${totalSteps()}: Scrub to HALF-WAY DOWN. Tap the ball.`,
-        label: 'MARK HALF-DOWN',
-        color: '#bf5af2',
-        ready: () => activeTap !== null && peakPt !== null && video.currentTime > peakPt.time,
-        confirm: () => { halfDownPt = { time: video.currentTime, pos: normalizedPos(activeTap) }; activeTap = null; }
-    });
-    steps.push({
-        id: 'landing',
-        status: () => `Step ${n} of ${totalSteps()}: Scrub to LANDING. Tap the ball.`,
-        label: 'MARK LANDING',
-        color: '#ff3b30',
-        ready: () => activeTap !== null && halfDownPt !== null && video.currentTime > halfDownPt.time,
-        confirm: () => {
-            endPt = { time: video.currentTime, pos: normalizedPos(activeTap) };
-            activeTap = null;
-            handleCalculateAndReport();
-        }
-    });
-
-    let idx = 1;
-    steps.forEach(s => {
-        const i = idx++;
-        const total = steps.length;
-        s._statusStr = s.status().replace(/Step \d+ of \d+/, `Step ${i} of ${total}`);
-        s.statusStr  = s._statusStr;
-    });
-
-    return steps;
-}
-
-function totalSteps() {
-    return 8 + (setupConfig.uprrightsVisible ? 2 : 0);
-}
-
-function currentStepIndex() {
-    let i = 0;
-    if (scaleDots.length > 0)    i = 1;
-    if (scaleDots.length > 1)    i = 2;
-    if (ballTeeDots.length > 0)  i = 3;
-    if (startPt) { 
-        if (setupConfig.uprrightsVisible) {
-            i = 4;
-            if (uprightDots.length > 0) i = 5;
-            if (uprightDots.length > 1) i = 6;
-            if (halfUpPt)   i = 7;
-            if (peakPt)     i = 8;
-            if (halfDownPt) i = 9;
-            if (endPt)      i = 10;
-        } else {
-            i = 4;
-            if (halfUpPt)   i = 5;
-            if (peakPt)     i = 6;
-            if (halfDownPt) i = 7;
-            if (endPt)      i = 8;
-        }
-    }
-    return i;
-}
-
-function normalizedPos(tap) {
-    return { x: tap.x - centerX + 0.5, y: tap.y };
-}
-
-function rebuildProgressDots() {
-    const bar = document.getElementById('progress-bar');
-    const total = totalSteps();
-    bar.innerHTML = '';
-    for (let i = 0; i < total; i++) {
-        const d = document.createElement('div');
-        d.className = 'progress-dot';
-        d.id = `dot-${i}`;
-        bar.appendChild(d);
-    }
-}
-
-function updateProgressDots(stepIdx) {
-    const total = totalSteps();
-    for (let i = 0; i < total; i++) {
-        const dot = document.getElementById(`dot-${i}`);
-        if (!dot) continue;
-        dot.className = 'progress-dot' +
-            (i < stepIdx ? ' done' : i === stepIdx ? ' active' : '');
-    }
-}
-
-document.getElementById('file-upload').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    video.src = URL.createObjectURL(file);
-    video.load();
-    video.onloadeddata = () => {
-        document.getElementById('upload-placeholder').style.display = 'none';
-        document.getElementById('overlay').style.display = 'block';
-        document.getElementById('persistent-controls').style.display = 'flex';
-        isVideoLoaded = true;
-        imgW = video.videoWidth;
-        imgH = video.videoHeight;
-        scrubber.max = video.duration;
-        resizeCanvas(); 
-        openSetup();
-    };
-});
-
-function resizeCanvas() {
-    const container = document.querySelector('.viewport-container');
-    const dpr = window.devicePixelRatio || 1;
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    canvas.width  = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    canvas.style.width  = w + 'px';
-    canvas.style.height = h + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (isVideoLoaded) fitVideoToCanvas();
-}
-window.addEventListener('resize', () => { resizeCanvas(); requestDraw(); });
-
-function fitVideoToCanvas() {
-    const cw = canvas.clientWidth;
-    const ch = canvas.clientHeight;
-    const scaleX = cw / imgW;
-    const scaleY = ch / imgH;
-    camScale = Math.min(scaleX, scaleY);
-    camX = (cw - imgW * camScale) / 2;
-    camY = (ch - imgH * camScale) / 2;
-    syncZoomSlider();
-}
-
-function syncZoomSlider() {
-    const fitScale = getFitScale();
-    const relZoom = camScale / fitScale;
-    document.getElementById('zoom-slider').value = Math.max(1, Math.min(10, relZoom));
-    document.getElementById('zoom-val').innerText = relZoom.toFixed(1) + 'x';
-}
-
-function getFitScale() {
-    const cw = canvas.clientWidth;
-    const ch = canvas.clientHeight;
-    return Math.min(cw / (imgW||1), ch / (imgH||1));
-}
-
-function screenToNorm(clientX, clientY) {
-    const rect = canvas.getBoundingClientRect();
-    const sx = clientX - rect.left;
-    const sy = clientY - rect.top;
-    const ix = (sx - camX) / camScale;
-    const iy = (sy - camY) / camScale;
-    if (ix < 0 || ix > imgW || iy < 0 || iy > imgH) return null;
-    return { x: ix / imgW, y: iy / imgH };
-}
-
-function normToScreen(nx, ny) {
-    return {
-        x: nx * imgW * camScale + camX,
-        y: ny * imgH * camScale + camY,
-    };
-}
-
-let zoomFocusX = null;
-let zoomFocusY = null;
-function getZoomFocus() {
-    return {
-        x: zoomFocusX !== null ? zoomFocusX : canvas.clientWidth  / 2,
-        y: zoomFocusY !== null ? zoomFocusY : canvas.clientHeight / 2,
-    };
-}
-
-document.getElementById('zoom-slider').addEventListener('input', e => {
-    const relZoom = parseFloat(e.target.value);
-    document.getElementById('zoom-val').innerText = relZoom.toFixed(1) + 'x';
-    const f = getZoomFocus();
-    zoomAround(f.x, f.y, relZoom * getFitScale());
-    requestDraw();
-});
-
-function zoomAround(sx, sy, newScale) {
-    const ix = (sx - camX) / camScale;
-    const iy = (sy - camY) / camScale;
-    camScale = Math.max(getFitScale(), newScale);
-    camX = sx - ix * camScale;
-    camY = sy - iy * camScale;
-    syncZoomSlider();
-}
-
-video.addEventListener('timeupdate', () => {
-    if (!isScrubbing) scrubber.value = video.currentTime;
-    requestDraw(); 
-});
-
-let lastScrub = 0;
-scrubber.addEventListener('input',  e => { 
-    isScrubbing = true;  
-    const now = performance.now();
-    // OPTIMIZATION: Throttled decoder requests
-    if (now - lastScrub > 50) {
-        video.currentTime = e.target.value; 
-        lastScrub = now;
-        requestDraw();
-    }
-});
-
-scrubber.addEventListener('change', e => { 
-    isScrubbing = false; 
-    video.currentTime = e.target.value; 
-    requestDraw(); 
-});
-
-function togglePlay() {
-    if (video.paused) { video.play();  document.getElementById('btn-playpause').innerText = '⏸'; }
-    else              { video.pause(); document.getElementById('btn-playpause').innerText = '▶'; }
-}
-function stepFrame(f) {
-    video.pause();
-    document.getElementById('btn-playpause').innerText = '▶';
-    video.currentTime += (1/fps) * f;
-}
-
-const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
-
-function clampCamera() {
-    const cw = canvas.clientWidth;
-    const ch = canvas.clientHeight;
-    const minCamX = cw - imgW * camScale;
-    const minCamY = ch - imgH * camScale;
-    if (minCamX < 0) {
-        camX = Math.max(minCamX, Math.min(0, camX));
-    } else {
-        camX = minCamX / 2; 
-    }
-    if (minCamY < 0) {
-        camY = Math.max(minCamY, Math.min(0, camY));
-    } else {
-        camY = minCamY / 2;
-    }
-}
-
-function placeTap(clientX, clientY) {
-    const coords = screenToNorm(clientX, clientY);
-    if (!coords) return;
-    activeTap = coords;
-    updateWorkflow();
-    requestDraw();
-}
-
-if (isTouchDevice) {
-    let touchPinchStartDist  = null;
-    let touchPinchStartScale = 1;
-    let touchPinchStartCamX  = 0;
-    let touchPinchStartCamY  = 0;
-    let touchDragLastX = null;
-    let touchDragLastY = null;
-    let touchStartX    = null;
-    let touchStartY    = null;
-    let touchMoved     = false;
-
-    canvas.addEventListener('touchstart', e => {
-        e.preventDefault();
-        if (e.touches.length === 1) {
-            const t = e.touches[0];
-            touchStartX    = t.clientX;
-            touchStartY    = t.clientY;
-            touchDragLastX = t.clientX;
-            touchDragLastY = t.clientY;
-            touchMoved     = false;
-        } else if (e.touches.length === 2) {
-            touchDragLastX = touchDragLastY = null;
-            const t1 = e.touches[0], t2 = e.touches[1];
-            touchPinchStartDist  = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-            touchPinchStartScale = camScale;
-            touchPinchStartCamX  = camX;
-            touchPinchStartCamY  = camY;
-        }
-    }, { passive: false });
-
-    canvas.addEventListener('touchmove', e => {
-        e.preventDefault();
-        if (e.touches.length === 2 && touchPinchStartDist !== null) {
-            const t1 = e.touches[0], t2 = e.touches[1];
-            const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-            const midX = (t1.clientX + t2.clientX) / 2;
-            const midY = (t1.clientY + t2.clientY) / 2;
-            const rect = canvas.getBoundingClientRect();
-            const sx = midX - rect.left;
-            const sy = midY - rect.top;
-            const newScale = Math.max(getFitScale(), Math.min(getFitScale() * 10,
-                touchPinchStartScale * (dist / touchPinchStartDist)));
-            const ix = (sx - touchPinchStartCamX) / touchPinchStartScale;
-            const iy = (sy - touchPinchStartCamY) / touchPinchStartScale;
-            camScale = newScale;
-            camX = sx - ix * camScale;
-            camY = sy - iy * camScale;
-            clampCamera();
-            syncZoomSlider();
-            zoomFocusX = sx;
-            zoomFocusY = sy;
-            requestDraw();
-            touchMoved = true;
-        } else if (e.touches.length === 1 && touchDragLastX !== null) {
-            const t = e.touches[0];
-            if (Math.hypot(t.clientX - touchStartX, t.clientY - touchStartY) > 6) {
-                touchMoved = true;
+        document.getElementById('guide-overlay').addEventListener('click', e => {
+            if (e.target === document.getElementById('guide-overlay')) {
+                document.getElementById('guide-overlay').classList.remove('visible');
             }
-            camX += t.clientX - touchDragLastX;
-            camY += t.clientY - touchDragLastY;
-            clampCamera();
-            touchDragLastX = t.clientX;
-            touchDragLastY = t.clientY;
-            requestDraw();
-        }
-    }, { passive: false });
-
-    canvas.addEventListener('touchend', e => {
-        if (e.touches.length < 2) touchPinchStartDist = null;
-        if (e.touches.length === 0) {
-            if (!touchMoved && touchStartX !== null) {
-                placeTap(touchStartX, touchStartY);
-            }
-            touchDragLastX = touchDragLastY = null;
-            touchStartX    = touchStartY    = null;
-        }
-    }, { passive: true });
-
-} else {
-    let mouseDownPos  = null;
-    let mouseDragging = false;
-    let mouseCanvasX  = canvas.clientWidth  / 2;
-    let mouseCanvasY  = canvas.clientHeight / 2;
-
-    // OPTIMIZATION: Consolidated Mouse Move
-    canvas.addEventListener('mousemove', e => {
-        const rect = canvas.getBoundingClientRect();
-        mouseCanvasX = e.clientX - rect.left;
-        mouseCanvasY = e.clientY - rect.top;
-        zoomFocusX = mouseCanvasX;
-        zoomFocusY = mouseCanvasY;
-        
-        if (mouseDownPos) {
-            const dx = e.clientX - mouseDownPos.x;
-            const dy = e.clientY - mouseDownPos.y;
-            if (Math.hypot(dx, dy) > 4) mouseDragging = true;
-            
-            if (mouseDragging) {
-                camX += e.clientX - mouseDownPos.x;
-                camY += e.clientY - mouseDownPos.y;
-                clampCamera();
-                mouseDownPos = { x: e.clientX, y: e.clientY };
-                requestDraw();
-            }
-        }
-    });
-
-    canvas.addEventListener('mousedown', e => {
-        mouseDownPos  = { x: e.clientX, y: e.clientY };
-        mouseDragging = false;
-    });
-
-    canvas.addEventListener('mouseup', e => {
-        if (!mouseDragging) {
-            placeTap(e.clientX, e.clientY);
-        }
-        mouseDownPos  = null;
-        mouseDragging = false;
-    });
-
-    canvas.addEventListener('mouseleave', () => {
-        mouseDownPos  = null;
-        mouseDragging = false;
-    });
-
-    // OPTIMIZATION: Laptop Trackpad / Mouse Wheel Support
-    canvas.addEventListener('wheel', e => {
-        e.preventDefault();
-        const rect = canvas.getBoundingClientRect();
-        const sx = e.clientX - rect.left;
-        const sy = e.clientY - rect.top;
-        
-        const zoomSpeed = 0.05;
-        let delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
-        if (e.ctrlKey) { // Automatically handles trackpad pinch-to-zoom mapping
-            delta = e.deltaY > 0 ? -zoomSpeed * 2 : zoomSpeed * 2;
-        }
-        
-        const newScale = Math.max(getFitScale(), Math.min(getFitScale() * 10, camScale * (1 + delta)));
-        zoomAround(sx, sy, newScale);
-        requestDraw();
-    }, { passive: false });
-}
-
-let drawPending = false;
-function requestDraw() {
-    if (!drawPending) {
-        drawPending = true;
-        requestAnimationFrame(() => {
-            draw();
-            drawPending = false;
         });
-    }
-}
-
-function draw() {
-    if (!isVideoLoaded) return;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    ctx.clearRect(0, 0, w, h);
-
-    // OPTIMIZATION: Sub-pixel rounding for massive FPS boost
-    ctx.drawImage(video, Math.round(camX), Math.round(camY), Math.round(imgW * camScale), Math.round(imgH * camScale));
-
-    const dr = 6;
-
-    if (centerX !== null) {
-        const cx = normToScreen(centerX, 0).x;
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([8, 6]);
-        ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
-        ctx.stroke(); ctx.setLineDash([]); ctx.restore();
-    }
-
-    if (uprightDots.length === 2) {
-        const lx = normToScreen(uprightDots[0].x, 0).x;
-        const rx = normToScreen(uprightDots[1].x, 0).x;
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([6, 4]);
-        [lx, rx].forEach(x => {
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        document.getElementById('btn-reset-tutorial').addEventListener('click', () => {
+            localStorage.removeItem('kicktracker_tutorial_disabled');
+            const btn = document.getElementById('btn-reset-tutorial');
+            btn.innerText = '✓ Tutorials Reset';
+            btn.style.color = '#34c759';
+            setTimeout(() => {
+                btn.innerText = '↺ Reset Step-by-Step Tutorials';
+                btn.style.color = '#ff9500';
+            }, 2000);
         });
-        ctx.setLineDash([]); ctx.restore();
-        ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.font = 'bold 10px -apple-system,sans-serif';
-        ctx.fillText('L Post', lx + 3, 14);
-        ctx.fillText('R Post', rx + 3, 14);
-    }
-
-    if (scaleDots.length === 2) {
-        const s0 = normToScreen(scaleDots[0].x, scaleDots[0].y);
-        const s1 = normToScreen(scaleDots[1].x, scaleDots[1].y);
-        ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(s0.x, s0.y); ctx.lineTo(s1.x, s1.y); ctx.stroke();
-    }
-    ctx.fillStyle = '#007aff';
-    scaleDots.forEach(p => {
-        const s = normToScreen(p.x, p.y);
-        ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
-    });
-
-    ballTeeDots.forEach((p, i) => {
-        const s = normToScreen(p.x, p.y);
-        ctx.fillStyle = '#ff9500';
-        ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
-        ctx.font = 'bold 10px -apple-system,sans-serif';
-        ctx.fillText(i===0 ? 'Ball Top' : 'Ball Bot', s.x + dr+2, s.y + 4);
-    });
-    if (ballTeeDots.length === 2) {
-        const s0 = normToScreen(ballTeeDots[0].x, ballTeeDots[0].y);
-        const s1 = normToScreen(ballTeeDots[1].x, ballTeeDots[1].y);
-        ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(s0.x, s0.y); ctx.lineTo(s1.x, s1.y); ctx.stroke();
-        const mx = (s0.x + s1.x) / 2, my = (s0.y + s1.y) / 2, len = 8;
-        ctx.strokeStyle = '#34c759'; ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(mx-len, my); ctx.lineTo(mx+len, my);
-        ctx.moveTo(mx, my-len); ctx.lineTo(mx, my+len);
-        ctx.stroke();
-    }
-
-    uprightDots.forEach(p => {
-        const s = normToScreen(p.x, p.y);
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
-    });
-
-    if (activeTap) {
-        const s = normToScreen(activeTap.x, activeTap.y);
-        ctx.strokeStyle='#ffff00'; ctx.lineWidth=2.5;
-        ctx.beginPath();
-        ctx.moveTo(s.x,s.y-12); ctx.lineTo(s.x,s.y+12);
-        ctx.moveTo(s.x-12,s.y); ctx.lineTo(s.x+12,s.y);
-        ctx.stroke();
-    }
-
-    const drawMarker = (pt, color, label, isNorm) => {
-        if (!pt) return;
-        const nx = isNorm ? pt.pos.x - 0.5 + (centerX||0.5) : pt.pos.x;
-        const ny = pt.pos.y;
-        const s = normToScreen(nx, ny);
-        ctx.fillStyle = color;
-        ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
-        if (label) {
-            ctx.fillStyle = color;
-            ctx.font = 'bold 11px -apple-system,sans-serif';
-            ctx.fillText(label, s.x+dr+2, s.y+4);
-        }
-    };
-    drawMarker(startPt,    '#34c759', 'Impact',  false);
-    drawMarker(halfUpPt,   '#5ac8fa', '½↑',      true);
-    drawMarker(peakPt,     '#ff9500', 'Apex',     true);
-    drawMarker(halfDownPt, '#bf5af2', '½↓',       true);
-    drawMarker(endPt,      '#ff3b30', 'Landing',  true);
-
-    const tpts = [startPt, halfUpPt, peakPt, halfDownPt, endPt].filter(Boolean).map(pt => {
-        const nx = (pt !== startPt) ? pt.pos.x - 0.5 + (centerX||0.5) : pt.pos.x;
-        return normToScreen(nx, pt.pos.y);
-    });
-    if (tpts.length >= 2) {
-        ctx.strokeStyle = 'rgba(255,200,0,0.6)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 4]);
-        ctx.beginPath(); ctx.moveTo(tpts[0].x, tpts[0].y);
-        tpts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
-        ctx.stroke(); ctx.setLineDash([]);
-    }
-}
-
-function updateWorkflow() {
-    if (!isVideoLoaded) return;
-    const btn    = document.getElementById('btn-workflow');
-    const undoBtn = document.getElementById('btn-undo');
-    const steps  = getSteps();
-    const stepIdx = currentStepIndex();
-    const total   = steps.length;
-
-    updateProgressDots(stepIdx);
-    undoBtn.disabled = (stepIdx === 0);
-
-    if (stepIdx >= total) {
-        statusText.innerText = 'Analysis complete.';
-        btn.innerText = 'VIEW REPORT';
-        btn.style.background = '#007aff';
-        btn.disabled = false;
-        btn.onclick = () => document.getElementById('report-modal').style.display = 'flex';
-        return;
-    }
-
-    const step = steps[stepIdx];
-    statusText.innerText = step._statusStr || step.statusStr || step.status();
-    btn.innerText        = step.label;
-    btn.style.background = step.color;
-    btn.disabled         = !step.ready();
-    btn.onclick = () => {
-        if (!step.ready()) return;
-        step.confirm();
-        updateWorkflow();
-        requestDraw();
-    };
-}
-
-function undoLast() {
-    const i = currentStepIndex();
-    const hasU = setupConfig.uprrightsVisible;
-    if (!hasU) {
-        if      (i >= 8) endPt      = null;
-        else if (i === 7) halfDownPt = null;
-        else if (i === 6) peakPt     = null;
-        else if (i === 5) halfUpPt   = null;
-        else if (i === 4) { startPt = null; centerX = null; ballTeeDots.pop(); ballTeePixelHeight = 0; }
-        else if (i === 3) ballTeeDots.pop();
-        else if (i === 2) scaleDots.pop();
-        else if (i === 1) scaleDots.pop();
-    } else {
-        if      (i >= 10) endPt      = null;
-        else if (i === 9)  halfDownPt = null;
-        else if (i === 8)  peakPt     = null;
-        else if (i === 7)  halfUpPt   = null;
-        else if (i === 6)  uprightDots.pop();
-        else if (i === 5)  uprightDots.pop();
-        else if (i === 4)  { startPt = null; centerX = null; ballTeeDots.pop(); ballTeePixelHeight = 0; }
-        else if (i === 3)  ballTeeDots.pop();
-        else if (i === 2)  scaleDots.pop();
-        else if (i === 1)  scaleDots.pop();
-    }
-    activeTap = null;
-    updateWorkflow();
-    requestDraw();
-}
-
-function handleCalculateAndReport() {
-    const tol = getUprightTolerances(setupConfig);
-
-    let adjustedCenterX = centerX;
-    let uprightCenterX  = null;
-    if (uprightDots.length === 2) {
-        uprightCenterX  = (uprightDots[0].x + uprightDots[1].x) / 2;
-    }
-
-    const report = physics.calculate(
-        startPt, peakPt, endPt,
-        scaleDots, setupConfig.cameraDistance, canvas.clientWidth,
-        halfUpPt, halfDownPt,
-        ballTeePixelHeight, canvas.clientHeight,
-        setupConfig.ballLengthIn,
-        tol,
-        uprightCenterX  
-    );
-
-    const ballOffsetYds = report._adjustedTol
-        ? (report._adjustedTol.rightTol - getUprightTolerances(setupConfig).rightTol) * -1
-        : 0;
-    const nflBaseTol = getUprightTolerances({ ...setupConfig, uprightType:'nfl', uprightWidthFt:18.5, crossbarFt:10 });
-    const cfbBaseTol = getUprightTolerances({ ...setupConfig, uprightType:'cfb', uprightWidthFt:23.4, crossbarFt:10 });
-    const nflTol = { ...nflBaseTol, rightTol: nflBaseTol.rightTol - ballOffsetYds, leftTol: nflBaseTol.leftTol + ballOffsetYds };
-    const cfbTol = { ...cfbBaseTol, rightTol: cfbBaseTol.rightTol - ballOffsetYds, leftTol: cfbBaseTol.leftTol + ballOffsetYds };
-    const nflGood = physics.calcMaxGoodExternal(report._vUp, report._vFwd, report._latCoeffs, report.kickDistance, nflTol);
-    const cfbGood = physics.calcMaxGoodExternal(report._vUp, report._vFwd, report._latCoeffs, report.kickDistance, cfbTol);
-
-    let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
-    history.unshift({ ...report, date: new Date().toISOString(), config: setupConfig });
-    if (history.length > 100) history.pop();
-    localStorage.setItem('kickHistory', JSON.stringify(history));
-
-    const uprightLabel = `${setupConfig.uprightType.toUpperCase()} Uprights · ${setupConfig.hashPosition.charAt(0).toUpperCase()+setupConfig.hashPosition.slice(1)} Hash`;
-    document.getElementById('rep-upright-label').innerText = `Scoring Projection — ${uprightLabel}`;
-    document.getElementById('rep-dist').innerText      = `${report.kickDistance} yds`;
-    document.getElementById('rep-max').innerText       = `≤ ${Math.floor(report.maxGoodDistance)} yds`;
-    document.getElementById('rep-miss').innerText      = report.drift;
-    document.getElementById('rep-miss').className      = report.drift === 'Straight' ? 'text-green' : 'text-red';
-    document.getElementById('rep-drift-yds').innerText = `${report.driftYards > 0 ? '+' : ''}${report.driftYards} yds`;
-    document.getElementById('rep-time').innerText      = `${report.time}s`;
-    document.getElementById('rep-height').innerText    = `${report.height} ft`;
-    document.getElementById('rep-angle').innerText     = `${report.angle}°`;
-    document.getElementById('rep-apex').innerText      = `${report.trueApexTime}s`;
-
-    if (setupConfig.uprightType !== 'custom') {
-        document.getElementById('rep-multi-section').style.display = 'block';
-        document.getElementById('rep-nfl-good').innerText = `≤ ${Math.floor(nflGood)} yds`;
-        document.getElementById('rep-cfb-good').innerText = `≤ ${Math.floor(cfbGood)} yds`;
-    } else {
-        document.getElementById('rep-multi-section').style.display = 'none';
-    }
-
-    document.getElementById('report-modal').style.display = 'flex';
-}
-
-function resetAll() {
-    scaleDots = []; ballTeeDots = []; uprightDots = [];
-    ballTeePixelHeight = 0;
-    activeTap = null;
-    startPt = halfUpPt = peakPt = halfDownPt = endPt = null;
-    centerX = null;
-    fitVideoToCanvas(); 
-    if (isVideoLoaded) { video.pause(); video.currentTime = 0; scrubber.value = 0; }
-    rebuildProgressDots();
-    updateWorkflow();
-    requestDraw();
-}
-
-document.getElementById('btn-home').addEventListener('click', () => { window.location.href = 'index.html'; });
-
-rebuildProgressDots();
-</script>
+    </script>
 </body>
 </html>
