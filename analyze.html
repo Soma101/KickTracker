@@ -546,6 +546,7 @@
             <div class="report-row"><span>Kick Distance</span>   <span class="text-green"  id="rep-dist">-- yds</span></div>
             <div class="report-row"><span>Good From</span>       <span class="text-green"  id="rep-max">≤ 0 yds</span></div>
             <div class="report-row"><span>Drift Profile</span>   <span id="rep-miss" style="font-weight:bold;">--</span></div>
+            <div class="report-row"><span>Kick Result</span>     <span id="rep-result" style="font-weight:bold;">--</span></div>
             <div class="report-row"><span>Drift at Landing</span><span id="rep-drift-yds" style="font-weight:bold;">-- yds</span></div>
         </div>
         <div class="report-section" id="rep-multi-section" style="display:none;">
@@ -606,7 +607,6 @@ let imgW      = 0;
 let imgH      = 0;     
 const zoomLevel = { get value() { return camScale; } }; 
 
-let scaleDots          = [];
 let ballTeeDots        = [];    
 let ballTeePixelHeight = 0;
 let uprightDots        = [];    
@@ -695,24 +695,8 @@ function getSteps() {
     let n = 0;
 
     steps.push({
-        id: 'scale1',
-        status: () => `Step ${++n} of ${totalSteps()}: Tap 1st scale reference dot (10 yds apart)`,
-        label: 'CONFIRM 1ST DOT',
-        color: '#007aff',
-        ready: () => activeTap !== null,
-        confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
-    });
-    steps.push({
-        id: 'scale2',
-        status: () => `Step ${n} of ${totalSteps()}: Tap 2nd scale reference dot`,
-        label: 'CONFIRM 2ND DOT',
-        color: '#007aff',
-        ready: () => activeTap !== null,
-        confirm: () => { scaleDots.push({...activeTap}); activeTap = null; }
-    });
-    steps.push({
         id: 'ballTop',
-        status: () => `Step ${n} of ${totalSteps()}: Scrub to impact frame. Tap the top of the ball.`,
+        status: () => `Step ${++n} of ${totalSteps()}: Scrub to impact frame. Tap the top of the ball.`,
         label: 'CONFIRM BALL TOP',
         color: '#ff9500',
         ready: () => activeTap !== null,
@@ -803,29 +787,27 @@ function getSteps() {
 }
 
 function totalSteps() {
-    return 8 + (setupConfig.uprrightsVisible ? 2 : 0);
+    return 6 + (setupConfig.uprrightsVisible ? 2 : 0);
 }
 
 function currentStepIndex() {
     let i = 0;
-    if (scaleDots.length > 0)    i = 1;
-    if (scaleDots.length > 1)    i = 2;
-    if (ballTeeDots.length > 0)  i = 3;
+    if (ballTeeDots.length > 0)  i = 1;
     if (startPt) { 
         if (setupConfig.uprrightsVisible) {
-            i = 4;
-            if (uprightDots.length > 0) i = 5;
-            if (uprightDots.length > 1) i = 6;
-            if (halfUpPt)   i = 7;
-            if (peakPt)     i = 8;
-            if (halfDownPt) i = 9;
-            if (endPt)      i = 10;
-        } else {
-            i = 4;
+            i = 2;
+            if (uprightDots.length > 0) i = 3;
+            if (uprightDots.length > 1) i = 4;
             if (halfUpPt)   i = 5;
             if (peakPt)     i = 6;
             if (halfDownPt) i = 7;
             if (endPt)      i = 8;
+        } else {
+            i = 2;
+            if (halfUpPt)   i = 3;
+            if (peakPt)     i = 4;
+            if (halfDownPt) i = 5;
+            if (endPt)      i = 6;
         }
     }
     return i;
@@ -1216,18 +1198,6 @@ function draw() {
         ctx.fillText('R Post', rx + 3, 14);
     }
 
-    if (scaleDots.length === 2) {
-        const s0 = normToScreen(scaleDots[0].x, scaleDots[0].y);
-        const s1 = normToScreen(scaleDots[1].x, scaleDots[1].y);
-        ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(s0.x, s0.y); ctx.lineTo(s1.x, s1.y); ctx.stroke();
-    }
-    ctx.fillStyle = '#007aff';
-    scaleDots.forEach(p => {
-        const s = normToScreen(p.x, p.y);
-        ctx.beginPath(); ctx.arc(s.x, s.y, dr, 0, Math.PI*2); ctx.fill();
-    });
-
     ballTeeDots.forEach((p, i) => {
         const s = normToScreen(p.x, p.y);
         ctx.fillStyle = '#ff9500';
@@ -1339,25 +1309,21 @@ function undoLast() {
     const i = currentStepIndex();
     const hasU = setupConfig.uprrightsVisible;
     if (!hasU) {
-        if      (i >= 8) endPt      = null;
-        else if (i === 7) halfDownPt = null;
-        else if (i === 6) peakPt     = null;
-        else if (i === 5) halfUpPt   = null;
-        else if (i === 4) { startPt = null; centerX = null; ballTeeDots.pop(); ballTeePixelHeight = 0; }
-        else if (i === 3) ballTeeDots.pop();
-        else if (i === 2) scaleDots.pop();
-        else if (i === 1) scaleDots.pop();
+        if      (i >= 6) endPt      = null;
+        else if (i === 5) halfDownPt = null;
+        else if (i === 4) peakPt     = null;
+        else if (i === 3) halfUpPt   = null;
+        else if (i === 2) { startPt = null; centerX = null; ballTeeDots.pop(); ballTeePixelHeight = 0; }
+        else if (i === 1) ballTeeDots.pop();
     } else {
-        if      (i >= 10) endPt      = null;
-        else if (i === 9)  halfDownPt = null;
-        else if (i === 8)  peakPt     = null;
-        else if (i === 7)  halfUpPt   = null;
-        else if (i === 6)  uprightDots.pop();
-        else if (i === 5)  uprightDots.pop();
-        else if (i === 4)  { startPt = null; centerX = null; ballTeeDots.pop(); ballTeePixelHeight = 0; }
-        else if (i === 3)  ballTeeDots.pop();
-        else if (i === 2)  scaleDots.pop();
-        else if (i === 1)  scaleDots.pop();
+        if      (i >= 8) endPt      = null;
+        else if (i === 7)  halfDownPt = null;
+        else if (i === 6)  peakPt     = null;
+        else if (i === 5)  halfUpPt   = null;
+        else if (i === 4)  uprightDots.pop();
+        else if (i === 3)  uprightDots.pop();
+        else if (i === 2)  { startPt = null; centerX = null; ballTeeDots.pop(); ballTeePixelHeight = 0; }
+        else if (i === 1)  ballTeeDots.pop();
     }
     activeTap = null;
     updateWorkflow();
@@ -1375,7 +1341,7 @@ function handleCalculateAndReport() {
 
     const report = physics.calculate(
         startPt, peakPt, endPt,
-        scaleDots, setupConfig.cameraDistance, canvas.clientWidth,
+        [], setupConfig.cameraDistance, canvas.clientWidth,
         halfUpPt, halfDownPt,
         ballTeePixelHeight, canvas.clientHeight,
         setupConfig.ballLengthIn,
@@ -1402,8 +1368,13 @@ function handleCalculateAndReport() {
     document.getElementById('rep-upright-label').innerText = `Scoring Projection — ${uprightLabel}`;
     document.getElementById('rep-dist').innerText      = `${report.kickDistance} yds`;
     document.getElementById('rep-max').innerText       = `≤ ${Math.floor(report.maxGoodDistance)} yds`;
+    
     document.getElementById('rep-miss').innerText      = report.drift;
     document.getElementById('rep-miss').className      = report.drift === 'Straight' ? 'text-green' : 'text-red';
+    
+    document.getElementById('rep-result').innerText    = report.missReason;
+    document.getElementById('rep-result').className    = report.missReason === 'Good' ? 'text-green' : 'text-red';
+
     document.getElementById('rep-drift-yds').innerText = `${report.driftYards > 0 ? '+' : ''}${report.driftYards} yds`;
     document.getElementById('rep-time').innerText      = `${report.time}s`;
     document.getElementById('rep-height').innerText    = `${report.height} ft`;
@@ -1422,7 +1393,7 @@ function handleCalculateAndReport() {
 }
 
 function resetAll() {
-    scaleDots = []; ballTeeDots = []; uprightDots = [];
+    ballTeeDots = []; uprightDots = [];
     ballTeePixelHeight = 0;
     activeTap = null;
     startPt = halfUpPt = peakPt = halfDownPt = endPt = null;
@@ -1434,9 +1405,7 @@ function resetAll() {
     requestDraw();
 }
 
-const btnHome = document.getElementById('btn-home');
-btnHome.addEventListener('click', () => { window.location.href = 'index.html'; });
-btnHome.addEventListener('touchend', e => { e.preventDefault(); window.location.href = 'index.html'; });
+document.getElementById('btn-home').addEventListener('click', () => { window.location.href = 'index.html'; });
 
 rebuildProgressDots();
 
@@ -1448,20 +1417,12 @@ const TUTORIAL_DISABLED_KEY = 'kicktracker_tutorial_disabled';
 let lastTutorialStepShown = -1;
 
 const TUTORIAL_CONTENT = {
-    scale1: {
-        title: 'Scale Reference',
-        desc: "Put one dot at the start of the 10yd marker and the second dot at the end.",
-        gif: null,
-        emoji: '📏',
-    },
-    // scale2 removed so the tutorial doesn't pop up again for the second dot
     ballTop: {
         title: 'Impact Frame',
         desc: "Scrub to when the kick just about connects with the ball (Impact), and select the top and the bottom of the ball.",
         gif: null,
         emoji: '🏈',
     },
-    // ballBottom removed so the tutorial doesn't pop up again for the bottom dot
     uprightLeft: {
         title: 'Left Upright Post',
         desc: "Tap the LEFT upright post. This helps correct for any camera angle offset from center.",
