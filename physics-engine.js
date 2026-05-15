@@ -119,7 +119,10 @@ class KickPhysicsEngine {
             const lateralPx = p.isNorm ? (p.xNorm - 0.5) * canvasWidth : 0;
             const rawLateralPx = lateralPx; 
             
-            const X = lateralPx * yardsPerPixel_ref;
+            // PERSPECTIVE CORRECTION:
+            // Scale the lateral real-world distance based on how far away the ball is from the camera
+            const perspectiveScale = (cameraDistance + Z) / cameraDistance;
+            const X = lateralPx * yardsPerPixel_ref * perspectiveScale;
 
             const fittedYPx = ay*t*t + by*t + cy;
             const Y_ft = Math.max(0, (impactYPixel - fittedYPx) * ftPerPixel);
@@ -161,26 +164,23 @@ class KickPhysicsEngine {
         // ── 12. Good From ─────────────────────────────────────────────────────
         console.log('── GOOD FROM ──────────────────────────');
         console.log('tol:', adjustedTol);
-        const maxGood = this._calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, adjustedTol, cameraDistance);
-        console.log('maxGood result:', maxGood, 'yds');
+        const maxGoodData = this._calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, adjustedTol);
+        const maxGood = maxGoodData.maxGood;
+        const missReason = maxGoodData.missReason;
+        console.log('maxGood result:', maxGood, 'yds. Reason if missed:', missReason);
 
-        // ── 13. Drift at landing (WITH TARGETED PERSPECTIVE MULTIPLIER) ───────
-        const rawDriftAtLanding = al*kickDist_yd*kickDist_yd + bl*kickDist_yd + cl;
-        
-        // Scale the final drift up based on how far away the landing point is
-        const perspectiveMultiplier = (cameraDistance + kickDist_yd) / cameraDistance;
-        const driftAtLanding = rawDriftAtLanding * perspectiveMultiplier;
-
+        // ── 13. Drift at landing ──────────────────────────────────────────────
+        const driftAtLanding = al*kickDist_yd*kickDist_yd + bl*kickDist_yd + cl;
         let driftLabel;
         if      (Math.abs(driftAtLanding) < 0.5) driftLabel = 'Straight';
         else if (driftAtLanding > 0)             driftLabel = 'Drift Right';
         else                                     driftLabel = 'Drift Left';
 
-        console.log('rawDrift:', rawDriftAtLanding.toFixed(3), 'multiplier:', perspectiveMultiplier.toFixed(2));
-        console.log('corrected driftAtLanding:', driftAtLanding.toFixed(3), 'yds →', driftLabel);
+        console.log('driftAtLanding:', driftAtLanding.toFixed(3), 'yds →', driftLabel);
 
         return {
             maxGoodDistance: maxGood,
+            missReason:      missReason, // <-- Available in your UI now!
             drift:           driftLabel,
             driftYards:      parseFloat(driftAtLanding.toFixed(2)),
             kickDistance:    parseFloat(kickDist_yd.toFixed(1)),
@@ -196,15 +196,16 @@ class KickPhysicsEngine {
         };
     }
 
-    calcMaxGoodExternal(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, tol, cameraDistance = 15) {
-        return this._calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, tol, cameraDistance);
+    calcMaxGoodExternal(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, tol) {
+        // Return ONLY the number here so it doesn't break CFB/NFL calculations in UI
+        return this._calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, kickDist_yd, tol).maxGood;
     }
 
-    // Pass cameraDistance into here so we can check the correctly scaled drift against the uprights
-    _calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, maxDist, tol, cameraDistance = 15) {
+    _calcMaxGoodAsym(vUp_fps, vFwd_yds, latCoeffs, maxDist, tol) {
         const [al, bl, cl] = latCoeffs;
         const crossbar = tol.crossbarFt || 10;
         let maxGood = 0;
+        let missReason = "Good"; // Default state
 
         console.log('  [loop] vUp_fps:', vUp_fps.toFixed(3), 'vFwd_yds:', vFwd_yds.toFixed(3), 'maxDist:', maxDist.toFixed(1));
         console.log('  [loop] tol.leftTol:', tol.leftTol, 'tol.rightTol:', tol.rightTol, 'crossbar:', crossbar);
@@ -213,11 +214,7 @@ class KickPhysicsEngine {
         for (let D = 0.5; D <= maxDist + 0.5; D += 0.5) {
             const t_D    = D / (vFwd_yds || 0.001);
             const height = vUp_fps * t_D - 0.5 * this.gravity * t_D * t_D;
-            
-            // Apply the exact same multiplier so the Good From calculation matches the report drift
-            const perspectiveMultiplier = (cameraDistance + D) / cameraDistance;
-            const lateral = (al*D*D + bl*D + cl) * perspectiveMultiplier;
-            
+            const lateral = al*D*D + bl*D + cl;
             const inWindow = lateral <= tol.rightTol && lateral >= -tol.leftTol;
             const heightOk = height >= crossbar;
 
@@ -225,10 +222,28 @@ class KickPhysicsEngine {
                 console.log(`  D=${D.toFixed(1)}yd: t=${t_D.toFixed(3)}s  height=${height.toFixed(2)}ft (ok:${heightOk})  lateral=${lateral.toFixed(3)}yd (inWindow:${inWindow})  maxGood=${maxGood}`);
             }
 
-            if (heightOk && inWindow) maxGood = D;
+            if (heightOk && inWindow) {
+                maxGood = D;
+            } else {
+                // The VERY FIRST yardage mark where it fails, record WHY it failed
+                if (missReason === "Good") {
+                    if (!heightOk) {
+                        missReason = "Short";
+                    } else if (lateral > tol.rightTol) {
+                        missReason = "Drift Right";
+                    } else if (lateral < -tol.leftTol) {
+                        missReason = "Drift Left";
+                    }
+                }
+            }
+        }
+        
+        // If the kick was effectively good the whole way (within half a yard of max distance)
+        if (maxGood >= maxDist - 0.5) {
+            missReason = "Good";
         }
 
-        return maxGood;
+        return { maxGood, missReason };
     }
 
     // ── Weighted unconstrained parabola fit: y = ax² + bx + c ────────────────
