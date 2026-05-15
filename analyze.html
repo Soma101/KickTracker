@@ -306,33 +306,32 @@
             font-size: 16px; cursor: pointer; margin-top: 10px;
         }
 
-        /* ── Tutorial Modal (Updated) ── */
+        /* ── Tutorial Modal ── */
         #tutorial-modal {
             display: none;
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85);
             z-index: 300;
-            /* Center the modal horizontally and vertically */
-            align-items: center;
+            align-items: flex-end;
             justify-content: center;
-            padding: 16px;
+            padding-bottom: env(safe-area-inset-bottom);
         }
         #tutorial-modal.visible { display: flex; }
         .tutorial-sheet {
             background: #1c1c1e;
             width: 100%;
-            max-width: 380px; /* Made smaller/boxier */
-            border-radius: 16px; /* Rounded on all sides */
-            padding: 24px 20px;
+            max-width: 480px;
+            border-radius: 20px 20px 0 0;
+            padding: 16px 20px 24px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            gap: 12px;
         }
-        /* Hidden handle since it's no longer a bottom sheet */
         .tutorial-handle {
-            display: none;
+            width: 36px; height: 4px;
+            background: #3a3a3c; border-radius: 2px;
+            margin: 0 auto 4px;
         }
         .tutorial-step-label {
             font-size: 12px; font-weight: 800;
@@ -693,7 +692,7 @@ function getSteps() {
     });
     steps.push({
         id: 'ballTop',
-        status: () => `Step ${n} of ${totalSteps()}: Scrub to impact frame. Tap the top of the ball.`,
+        status: () => `Step ${n} of ${totalSteps()}: Pause on still frame before kick. Tap the TOP of the ball.`,
         label: 'CONFIRM BALL TOP',
         color: '#ff9500',
         ready: () => activeTap !== null,
@@ -857,9 +856,7 @@ document.getElementById('file-upload').addEventListener('change', e => {
         imgH = video.videoHeight;
         scrubber.max = video.duration;
         resizeCanvas(); 
-        
-        // Show Navigation Tutorial before Setup
-        showIntroTutorial();
+        openSetup();
     };
 });
 
@@ -1425,68 +1422,71 @@ rebuildProgressDots();
 //  Tutorial System
 // ═══════════════════════════════════════════════════════════════════════
 
+// localStorage key: if set to '1', never show tutorials
 const TUTORIAL_DISABLED_KEY = 'kicktracker_tutorial_disabled';
+// Track which step index we last showed a tutorial for (avoid re-showing
+// the same step's tutorial when e.g. the user taps and updateWorkflow runs again)
 let lastTutorialStepShown = -1;
 
-// Updated Tutorial Content based on new instructions
+// Tutorial content keyed by step id
 const TUTORIAL_CONTENT = {
     scale1: {
-        title: 'Scale Reference 1',
-        desc: "Put one dot at the start of the 10yd marker and the second dot at the end.",
-        gif: null,
+        title: 'Scale Reference Dots',
+        desc: "Scrub to any clear frame showing the field. Tap two points on the ground that are exactly 10 yards apart in the direction toward the uprights — e.g. two consecutive yard line markings near the ball.",
+        gif: null, // replace with path like 'gifs/scale.gif' when ready
         emoji: '📏',
     },
     scale2: {
-        title: 'Scale Reference 2',
-        desc: "Place the second dot at the end of the 10yd marker.",
+        title: 'Second Scale Dot',
+        desc: "Now tap the second point, 10 yards forward from the first. The blue line connecting them sets the real-world scale for all measurements.",
         gif: null,
         emoji: '📏',
     },
     ballTop: {
-        title: 'Impact Frame — Top',
-        desc: "Scrub to when the kick just about connects with the ball (Impact), and select the top and the bottom of the ball.",
+        title: 'Ball Size — Top',
+        desc: "Pause on a still frame just before the kick while the ball is sitting on the tee. Zoom in and tap the very TOP of the ball.",
         gif: null,
         emoji: '🏈',
     },
     ballBottom: {
-        title: 'Impact Frame — Bottom',
-        desc: "Select the bottom of the ball.",
+        title: 'Ball Size — Bottom',
+        desc: "Now tap the very BOTTOM of the ball on the same still frame. The midpoint between top and bottom becomes the impact baseline.",
         gif: null,
         emoji: '🏈',
     },
     uprightLeft: {
         title: 'Left Upright Post',
-        desc: "Tap the LEFT upright post. This helps correct for any camera angle offset from center.",
+        desc: "Scrub to the impact frame. Tap the LEFT upright post. This helps correct for any camera angle offset from center.",
         gif: null,
         emoji: '🥅',
     },
     uprightRight: {
         title: 'Right Upright Post',
-        desc: "Tap the RIGHT upright post to complete the upright calibration.",
+        desc: "On the same frame, tap the RIGHT upright post to complete the upright calibration.",
         gif: null,
         emoji: '🥅',
     },
     halfUp: {
-        title: 'Half-Way Up',
-        desc: "Scrub to when the ball is about half way up and click on it.",
+        title: 'Half-Way Up Point',
+        desc: "Scrub forward until the ball is approximately halfway through its rise. Tap the ball. It doesn't have to be exact — the 5 points are fit to a curve together.",
         gif: null,
         emoji: '⬆️',
     },
     apex: {
-        title: 'Apex Point',
-        desc: "Scrub to when the ball is at the apex and click on it.",
+        title: 'Apex — Highest Point',
+        desc: "Scrub to roughly the highest point of the ball's arc and tap it. Again, approximate is fine — the physics engine fits a parabola to all 5 points.",
         gif: null,
         emoji: '🔝',
     },
     halfDown: {
-        title: 'Half-Way Down',
-        desc: "Scrub to when the ball is about half way down and click on it.",
+        title: 'Half-Way Down Point',
+        desc: "Scrub to approximately halfway through the ball's descent and tap it.",
         gif: null,
         emoji: '⬇️',
     },
     landing: {
         title: 'Landing Point',
-        desc: "Scrub to when the ball lands and click on it.",
+        desc: "Scrub to the frame where the ball hits the ground (or nets/uprights). Tap the ball. This completes the trajectory and triggers the report.",
         gif: null,
         emoji: '🎯',
     },
@@ -1500,76 +1500,10 @@ function disableTutorials() {
     localStorage.setItem(TUTORIAL_DISABLED_KEY, '1');
 }
 
+// Called by index.html reset button
 function enableTutorials() {
     localStorage.removeItem(TUTORIAL_DISABLED_KEY);
     lastTutorialStepShown = -1;
-}
-
-// Function to intercept the user immediately upon video load with navigation instructions
-function showIntroTutorial() {
-    if (isTutorialDisabled()) {
-        openSetup();
-        return;
-    }
-
-    // Determine specific device language
-    const navInstructions = isTouchDevice
-        ? "Pinch to zoom, and drag to move the image."
-        : "Scroll to zoom, and click and drag to move the image.";
-
-    document.getElementById('tut-step-label').innerText = "Navigation";
-    document.getElementById('tut-title').innerText = "How to Move";
-    document.getElementById('tut-desc').innerText  = navInstructions;
-
-    const img = document.getElementById('tut-gif-img');
-    const placeholder = document.getElementById('tut-gif-placeholder');
-    img.style.display = 'none';
-    placeholder.style.display = 'flex';
-    placeholder.innerHTML = `<span>🗺️</span><p>Animation coming soon</p>`;
-
-    document.getElementById('tutorial-modal').classList.add('visible');
-
-    // Override the standard buttons just for this intro step to open Setup afterward
-    const okBtn = document.getElementById('tut-btn-ok');
-    const skipBtn = document.getElementById('tut-btn-skip');
-    
-    // Clear old listeners by cloning
-    const newOk = okBtn.cloneNode(true);
-    const newSkip = skipBtn.cloneNode(true);
-    okBtn.parentNode.replaceChild(newOk, okBtn);
-    skipBtn.parentNode.replaceChild(newSkip, skipBtn);
-
-    newOk.addEventListener('click', () => {
-        closeTutorial();
-        restoreTutorialButtons(); 
-        openSetup(); 
-    });
-
-    newSkip.addEventListener('click', () => {
-        disableTutorials();
-        closeTutorial();
-        restoreTutorialButtons();
-        openSetup(); 
-    });
-}
-
-// Restore buttons back to their normal workflow step behavior
-function restoreTutorialButtons() {
-    const okBtn = document.getElementById('tut-btn-ok');
-    const skipBtn = document.getElementById('tut-btn-skip');
-    const newOk = okBtn.cloneNode(true);
-    const newSkip = skipBtn.cloneNode(true);
-    okBtn.parentNode.replaceChild(newOk, okBtn);
-    skipBtn.parentNode.replaceChild(newSkip, skipBtn);
-
-    newOk.addEventListener('click', () => {
-        closeTutorial();
-    });
-
-    newSkip.addEventListener('click', () => {
-        disableTutorials();
-        closeTutorial();
-    });
 }
 
 function showTutorialForStep(stepId, stepNum, totalSteps) {
@@ -1602,8 +1536,14 @@ function closeTutorial() {
     document.getElementById('tutorial-modal').classList.remove('visible');
 }
 
-// Ensure the default handlers exist before the first step
-restoreTutorialButtons();
+document.getElementById('tut-btn-ok').addEventListener('click', () => {
+    closeTutorial();
+});
+
+document.getElementById('tut-btn-skip').addEventListener('click', () => {
+    disableTutorials();
+    closeTutorial();
+});
 
 </script>
 </body>
