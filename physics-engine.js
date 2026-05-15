@@ -116,14 +116,13 @@ class KickPhysicsEngine {
             const t = times[i];
             const Z = vFwd_yds * t;
 
-            // X is always measured relative to impact (ball starts at X=0).
-            // Upright offset is handled separately by shifting the tolerance window.
-            // xNorm for impact = raw canvas x (centerX) → lateral = 0.
-            // xNorm for subsequent points = tap.x - centerX + 0.5.
-            // lateralPx = (xNorm - 0.5) * canvasWidth = pixels from impact baseline.
             const lateralPx = p.isNorm ? (p.xNorm - 0.5) * canvasWidth : 0;
-            const rawLateralPx = lateralPx; // for logging (same now)
-            const X = lateralPx * yardsPerPixel_ref;
+            const rawLateralPx = lateralPx; 
+            
+            // PERSPECTIVE CORRECTION:
+            // Scale the lateral real-world distance based on how far away the ball is from the camera
+            const perspectiveScale = (cameraDistance + Z) / cameraDistance;
+            const X = lateralPx * yardsPerPixel_ref * perspectiveScale;
 
             const fittedYPx = ay*t*t + by*t + cy;
             const Y_ft = Math.max(0, (impactYPixel - fittedYPx) * ftPerPixel);
