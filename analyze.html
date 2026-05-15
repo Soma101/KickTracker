@@ -1431,29 +1431,19 @@ let lastTutorialStepShown = -1;
 // Updated Tutorial Content based on new instructions
 const TUTORIAL_CONTENT = {
     scale1: {
-        title: 'Scale Reference 1',
+        title: 'Scale Reference',
         desc: "Put one dot at the start of the 10yd marker and the second dot at the end.",
         gif: null,
         emoji: '📏',
     },
-    scale2: {
-        title: 'Scale Reference 2',
-        desc: "Place the second dot at the end of the 10yd marker.",
-        gif: null,
-        emoji: '📏',
-    },
+    // scale2 removed so the tutorial doesn't pop up again for the second dot
     ballTop: {
-        title: 'Impact Frame — Top',
+        title: 'Impact Frame',
         desc: "Scrub to when the kick just about connects with the ball (Impact), and select the top and the bottom of the ball.",
         gif: null,
         emoji: '🏈',
     },
-    ballBottom: {
-        title: 'Impact Frame — Bottom',
-        desc: "Select the bottom of the ball.",
-        gif: null,
-        emoji: '🏈',
-    },
+    // ballBottom removed so the tutorial doesn't pop up again for the bottom dot
     uprightLeft: {
         title: 'Left Upright Post',
         desc: "Tap the LEFT upright post. This helps correct for any camera angle offset from center.",
@@ -1575,6 +1565,8 @@ function restoreTutorialButtons() {
 function showTutorialForStep(stepId, stepNum, totalSteps) {
     if (isTutorialDisabled()) return;
     const content = TUTORIAL_CONTENT[stepId];
+    
+    // If the content is undefined (like scale2 or ballBottom), just return silently.
     if (!content) return;
 
     // Populate modal
