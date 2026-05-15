@@ -306,14 +306,13 @@
             font-size: 16px; cursor: pointer; margin-top: 10px;
         }
 
-        /* ── Tutorial Modal (Updated) ── */
+        /* ── Tutorial Modal ── */
         #tutorial-modal {
             display: none;
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85);
             z-index: 300;
-            /* Center the modal horizontally and vertically */
             align-items: center;
             justify-content: center;
             padding: 16px;
@@ -322,15 +321,14 @@
         .tutorial-sheet {
             background: #1c1c1e;
             width: 100%;
-            max-width: 380px; /* Made smaller/boxier */
-            border-radius: 16px; /* Rounded on all sides */
+            max-width: 380px; 
+            border-radius: 16px;
             padding: 24px 20px;
             display: flex;
             flex-direction: column;
             gap: 16px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
-        /* Hidden handle since it's no longer a bottom sheet */
         .tutorial-handle {
             display: none;
         }
@@ -343,7 +341,6 @@
             font-size: 18px; font-weight: 800;
             text-align: center; color: #fff; margin: 0;
         }
-        /* Placeholder GIF area */
         .tutorial-gif {
             width: 100%;
             height: 160px;
@@ -392,7 +389,6 @@
     </style>
 </head>
 <body>
-
 
 <div id="tutorial-modal">
     <div class="tutorial-sheet">
@@ -1291,18 +1287,18 @@ function updateWorkflow() {
     btn.innerText        = step.label;
     btn.style.background = step.color;
     btn.disabled         = !step.ready();
-
-    // Show tutorial card when we first arrive at a new step
-    if (stepIdx !== lastTutorialStepShown) {
-        lastTutorialStepShown = stepIdx;
-        showTutorialForStep(step.id, stepIdx + 1, total);
-    }
     btn.onclick = () => {
         if (!step.ready()) return;
         step.confirm();
         updateWorkflow();
         requestDraw();
     };
+
+    // Show tutorial card when we first arrive at a new step
+    if (stepIdx !== lastTutorialStepShown) {
+        lastTutorialStepShown = stepIdx;
+        showTutorialForStep(step.id, stepIdx + 1, total);
+    }
 }
 
 function undoLast() {
