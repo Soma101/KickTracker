@@ -133,6 +133,13 @@
             border-radius: 12px; font-weight: bold;
             font-size: 16px; cursor: pointer; flex-shrink: 0;
         }
+        #btn-reset-tutorial {
+            margin-top: 8px; width: 100%; padding: 12px;
+            background: #2c2c2e; color: #ff9500;
+            border: none; border-radius: 12px; font-weight: bold;
+            font-size: 14px; cursor: pointer; flex-shrink: 0;
+            transition: all 0.2s ease;
+        }
     </style>
 </head>
 <body>
@@ -143,9 +150,9 @@
     <p style="color: #8e8e93; font-size: 14px; margin-bottom: 30px;">Build: <span id="app-version"></span></p> 
 
     <div class="button-container">
-        <button class="main-btn" id="btn-record">Record Video</button>
-        <button class="main-btn" id="btn-analyze">Analyze Video</button>
-        <button class="main-btn" id="btn-history">Kick History</button>
+        <button class="main-btn" id="btn-record" onclick="window.location.href='record.html'">Record Video</button>
+        <button class="main-btn" id="btn-analyze" onclick="window.location.href='analyze.html'">Analyze Video</button>
+        <button class="main-btn" id="btn-history" onclick="window.location.href='history.html'">Kick History</button>
     </div>
 
     <button class="how-to-btn" id="btn-how-to">How To Use ↑</button>
@@ -225,6 +232,8 @@
                 </div>
 
             </div>
+            
+            <button id="btn-reset-tutorial">↺ Reset Step-by-Step Tutorials</button>
             <button class="btn-close-guide" id="btn-close-guide">Got It</button>
         </div>
     </div>
@@ -234,13 +243,29 @@
         document.getElementById('btn-how-to').addEventListener('click', () => {
             document.getElementById('guide-overlay').classList.add('visible');
         });
+        
         document.getElementById('btn-close-guide').addEventListener('click', () => {
             document.getElementById('guide-overlay').classList.remove('visible');
         });
+        
         document.getElementById('guide-overlay').addEventListener('click', e => {
             if (e.target === document.getElementById('guide-overlay')) {
                 document.getElementById('guide-overlay').classList.remove('visible');
             }
+        });
+
+        // Clear the tutorial disabled flag when clicked
+        document.getElementById('btn-reset-tutorial').addEventListener('click', () => {
+            localStorage.removeItem('kicktracker_tutorial_disabled');
+            
+            const btn = document.getElementById('btn-reset-tutorial');
+            btn.innerText = '✓ Tutorials Reactivated';
+            btn.style.color = '#34c759'; // Success Green
+            
+            setTimeout(() => {
+                btn.innerText = '↺ Reset Step-by-Step Tutorials';
+                btn.style.color = '#ff9500'; // Back to Orange
+            }, 2500);
         });
     </script>
 </body>
