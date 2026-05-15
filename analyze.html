@@ -385,7 +385,6 @@
 <body>
 
 
-<!-- ── Tutorial Modal ─────────────────────────────────────────────────── -->
 <div id="tutorial-modal">
     <div class="tutorial-sheet">
         <div class="tutorial-handle"></div>
@@ -491,7 +490,7 @@
 </div>
 
 <div class="viewport-container" id="viewport-container">
-    <div class="upload-placeholder" id="upload-placeholder" onclick="document.getElementById('file-upload').click()">
+    <div class="upload-placeholder" id="upload-placeholder">
         Upload Video
     </div>
     <video id="video-player" playsinline muted style="display:none;"></video>
@@ -837,6 +836,11 @@ function updateProgressDots(stepIdx) {
             (i < stepIdx ? ' done' : i === stepIdx ? ' active' : '');
     }
 }
+
+// Upload placeholder — handle both click and touch reliably
+const uploadPlaceholder = document.getElementById('upload-placeholder');
+uploadPlaceholder.addEventListener('click', () => document.getElementById('file-upload').click());
+uploadPlaceholder.addEventListener('touchend', e => { e.preventDefault(); document.getElementById('file-upload').click(); });
 
 document.getElementById('file-upload').addEventListener('change', e => {
     const file = e.target.files[0];
@@ -1408,7 +1412,9 @@ function resetAll() {
     requestDraw();
 }
 
-document.getElementById('btn-home').addEventListener('click', () => { window.location.href = 'index.html'; });
+const btnHome = document.getElementById('btn-home');
+btnHome.addEventListener('click', () => { window.location.href = 'index.html'; });
+btnHome.addEventListener('touchend', e => { e.preventDefault(); window.location.href = 'index.html'; });
 
 rebuildProgressDots();
 
@@ -1426,61 +1432,61 @@ let lastTutorialStepShown = -1;
 const TUTORIAL_CONTENT = {
     scale1: {
         title: 'Scale Reference Dots',
-        desc: 'Scrub to any clear frame showing the field. Tap two points on the ground that are exactly 10 yards apart in the direction toward the uprights — e.g. two consecutive yard line markings near the ball.',
+        desc: "Scrub to any clear frame showing the field. Tap two points on the ground that are exactly 10 yards apart in the direction toward the uprights — e.g. two consecutive yard line markings near the ball.",
         gif: null, // replace with path like 'gifs/scale.gif' when ready
         emoji: '📏',
     },
     scale2: {
         title: 'Second Scale Dot',
-        desc: 'Now tap the second point, 10 yards forward from the first. The blue line connecting them sets the real-world scale for all measurements.',
+        desc: "Now tap the second point, 10 yards forward from the first. The blue line connecting them sets the real-world scale for all measurements.",
         gif: null,
         emoji: '📏',
     },
     ballTop: {
         title: 'Ball Size — Top',
-        desc: 'Pause on a still frame just before the kick while the ball is sitting on the tee. Zoom in and tap the very TOP of the ball.',
+        desc: "Pause on a still frame just before the kick while the ball is sitting on the tee. Zoom in and tap the very TOP of the ball.",
         gif: null,
         emoji: '🏈',
     },
     ballBottom: {
         title: 'Ball Size — Bottom',
-        desc: 'Now tap the very BOTTOM of the ball on the same still frame. The midpoint between top and bottom becomes the impact baseline.',
+        desc: "Now tap the very BOTTOM of the ball on the same still frame. The midpoint between top and bottom becomes the impact baseline.",
         gif: null,
         emoji: '🏈',
     },
     uprightLeft: {
         title: 'Left Upright Post',
-        desc: 'Scrub to the impact frame. Tap the LEFT upright post. This helps correct for any camera angle offset from center.',
+        desc: "Scrub to the impact frame. Tap the LEFT upright post. This helps correct for any camera angle offset from center.",
         gif: null,
         emoji: '🥅',
     },
     uprightRight: {
         title: 'Right Upright Post',
-        desc: 'On the same frame, tap the RIGHT upright post to complete the upright calibration.',
+        desc: "On the same frame, tap the RIGHT upright post to complete the upright calibration.",
         gif: null,
         emoji: '🥅',
     },
     halfUp: {
         title: 'Half-Way Up Point',
-        desc: 'Scrub forward until the ball is approximately halfway through its rise. Tap the ball. It doesn't have to be exact — the 5 points are fit to a curve together.',
+        desc: "Scrub forward until the ball is approximately halfway through its rise. Tap the ball. It doesn't have to be exact — the 5 points are fit to a curve together.",
         gif: null,
         emoji: '⬆️',
     },
     apex: {
         title: 'Apex — Highest Point',
-        desc: 'Scrub to roughly the highest point of the ball's arc and tap it. Again, approximate is fine — the physics engine fits a parabola to all 5 points.',
+        desc: "Scrub to roughly the highest point of the ball's arc and tap it. Again, approximate is fine — the physics engine fits a parabola to all 5 points.",
         gif: null,
         emoji: '🔝',
     },
     halfDown: {
         title: 'Half-Way Down Point',
-        desc: 'Scrub to approximately halfway through the ball's descent and tap it.',
+        desc: "Scrub to approximately halfway through the ball's descent and tap it.",
         gif: null,
         emoji: '⬇️',
     },
     landing: {
         title: 'Landing Point',
-        desc: 'Scrub to the frame where the ball hits the ground (or nets/uprights). Tap the ball. This completes the trajectory and triggers the report.',
+        desc: "Scrub to the frame where the ball hits the ground (or nets/uprights). Tap the ball. This completes the trajectory and triggers the report.",
         gif: null,
         emoji: '🎯',
     },
