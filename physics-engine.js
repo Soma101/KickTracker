@@ -3,8 +3,9 @@ class KickPhysicsEngine {
         this.gravity = 32.174; // ft/s²
     }
 
+    // Notice we keep scaleDots in the parameters so analyze.html doesn't break
     calculate(startPt, peakPt, endPt,
-              cameraDistance, canvasWidth, // Note: scaleDots removed from params
+              scaleDots, cameraDistance, canvasWidth,
               halfUpPt, halfDownPt,
               ballTeePixelHeight, canvasHeight,
               ballLengthIn,
@@ -13,7 +14,7 @@ class KickPhysicsEngine {
 
         ballLengthIn = ballLengthIn || 11;
 
-        // ── 1. Scale reference (Using Football Size) ──────────────────────────
+        // ── 1. Scale reference (Using Football Size, ignoring scaleDots) ──────
         // Convert ball length from inches to yards (36 inches in a yard)
         const ballLengthYds = ballLengthIn / 36.0;
         
@@ -115,8 +116,13 @@ class KickPhysicsEngine {
             const t = times[i];
             const Z = vFwd_yds * t;
 
+            // X is always measured relative to impact (ball starts at X=0).
+            // Upright offset is handled separately by shifting the tolerance window.
+            // xNorm for impact = raw canvas x (centerX) → lateral = 0.
+            // xNorm for subsequent points = tap.x - centerX + 0.5.
+            // lateralPx = (xNorm - 0.5) * canvasWidth = pixels from impact baseline.
             const lateralPx = p.isNorm ? (p.xNorm - 0.5) * canvasWidth : 0;
-            const rawLateralPx = lateralPx; 
+            const rawLateralPx = lateralPx; // for logging (same now)
             const X = lateralPx * yardsPerPixel_ref;
 
             const fittedYPx = ay*t*t + by*t + cy;
@@ -142,7 +148,10 @@ class KickPhysicsEngine {
         console.log('lateral at Z=0 (should be ~0 if ball lined up with uprights):', cl.toFixed(4), 'yds');
         console.log('lateral at Z=kickDist:', (al*kickDist_yd*kickDist_yd + bl*kickDist_yd + cl).toFixed(3), 'yds');
 
-        // ── 11. Adjust tolerance window ───────────────────────────────────────
+        // ── 11. Adjust tolerance window for ball's starting position vs uprights ──
+        // All trajectory X values are impact-relative (X=0 at impact).
+        // If ball started right of upright center, it has less room to drift right.
+        // Shift the window so the physics reflects real upright geometry.
         let adjustedTol = { ...tol };
         if (uprightCenterX !== null) {
             const ballOffsetYds = (startPt.pos.x - uprightCenterX) * canvasWidth * yardsPerPixel_ref;
@@ -197,6 +206,10 @@ class KickPhysicsEngine {
         const crossbar = tol.crossbarFt || 10;
         let maxGood = 0;
 
+        console.log('  [loop] vUp_fps:', vUp_fps.toFixed(3), 'vFwd_yds:', vFwd_yds.toFixed(3), 'maxDist:', maxDist.toFixed(1));
+        console.log('  [loop] tol.leftTol:', tol.leftTol, 'tol.rightTol:', tol.rightTol, 'crossbar:', crossbar);
+
+        // Log first 10 yards and every 10 yards after to see where it fails
         for (let D = 0.5; D <= maxDist + 0.5; D += 0.5) {
             const t_D    = D / (vFwd_yds || 0.001);
             const height = vUp_fps * t_D - 0.5 * this.gravity * t_D * t_D;
@@ -204,12 +217,17 @@ class KickPhysicsEngine {
             const inWindow = lateral <= tol.rightTol && lateral >= -tol.leftTol;
             const heightOk = height >= crossbar;
 
+            if (D <= 5 || D % 10 === 0) {
+                console.log(`  D=${D.toFixed(1)}yd: t=${t_D.toFixed(3)}s  height=${height.toFixed(2)}ft (ok:${heightOk})  lateral=${lateral.toFixed(3)}yd (inWindow:${inWindow})  maxGood=${maxGood}`);
+            }
+
             if (heightOk && inWindow) maxGood = D;
         }
 
         return maxGood;
     }
 
+    // ── Weighted unconstrained parabola fit: y = ax² + bx + c ────────────────
     _fitParabolaWeighted(xs, ys, ws) {
         const n = xs.length;
         let s0=0,s1=0,s2=0,s3=0,s4=0,t0=0,t1=0,t2=0;
@@ -223,6 +241,7 @@ class KickPhysicsEngine {
         return this._solve3x3(M, rhs);
     }
 
+    // ── Unweighted parabola fit (used for vertical) ───────────────────────────
     _fitParabola(xs, ys) {
         const n = xs.length;
         let s1=0,s2=0,s3=0,s4=0,t0=0,t1=0,t2=0;
