@@ -4,7 +4,7 @@ class KickPhysicsEngine {
     }
 
     calculate(startPt, peakPt, endPt,
-              scaleDots, cameraDistance, canvasWidth,
+              cameraDistance, canvasWidth, // Note: scaleDots removed from params
               halfUpPt, halfDownPt,
               ballTeePixelHeight, canvasHeight,
               ballLengthIn,
@@ -13,16 +13,19 @@ class KickPhysicsEngine {
 
         ballLengthIn = ballLengthIn || 11;
 
-        // ── 1. Scale reference ────────────────────────────────────────────────
-        const sdx = (scaleDots[1].x - scaleDots[0].x) * canvasWidth;
-        const sdy = (scaleDots[1].y - scaleDots[0].y) * canvasHeight;
-        const scalePixelDist    = Math.sqrt(sdx*sdx + sdy*sdy) || 1;
-        const yardsPerPixel_ref = 10.0 / scalePixelDist;
+        // ── 1. Scale reference (Using Football Size) ──────────────────────────
+        // Convert ball length from inches to yards (36 inches in a yard)
+        const ballLengthYds = ballLengthIn / 36.0;
+        
+        // Prevent division by zero if the dots are accidentally placed on the exact same pixel
+        const safePixelHeight = Math.max(ballTeePixelHeight, 1);
+        
+        // Calculate the scale based on the ball's pixel height
+        const yardsPerPixel_ref = ballLengthYds / safePixelHeight;
 
         console.log('── SCALE ──────────────────────────────');
-        console.log('scaleDot[0]:', scaleDots[0]);
-        console.log('scaleDot[1]:', scaleDots[1]);
-        console.log('scalePixelDist (px):', scalePixelDist.toFixed(3));
+        console.log('ballLengthIn:', ballLengthIn, 'in ->', ballLengthYds.toFixed(4), 'yds');
+        console.log('ballTeePixelHeight (px):', ballTeePixelHeight.toFixed(3));
         console.log('yardsPerPixel_ref:', yardsPerPixel_ref.toFixed(6));
         console.log('canvasWidth:', canvasWidth, 'canvasHeight:', canvasHeight);
 
@@ -112,13 +115,8 @@ class KickPhysicsEngine {
             const t = times[i];
             const Z = vFwd_yds * t;
 
-            // X is always measured relative to impact (ball starts at X=0).
-            // Upright offset is handled separately by shifting the tolerance window.
-            // xNorm for impact = raw canvas x (centerX) → lateral = 0.
-            // xNorm for subsequent points = tap.x - centerX + 0.5.
-            // lateralPx = (xNorm - 0.5) * canvasWidth = pixels from impact baseline.
             const lateralPx = p.isNorm ? (p.xNorm - 0.5) * canvasWidth : 0;
-            const rawLateralPx = lateralPx; // for logging (same now)
+            const rawLateralPx = lateralPx; 
             const X = lateralPx * yardsPerPixel_ref;
 
             const fittedYPx = ay*t*t + by*t + cy;
@@ -144,10 +142,7 @@ class KickPhysicsEngine {
         console.log('lateral at Z=0 (should be ~0 if ball lined up with uprights):', cl.toFixed(4), 'yds');
         console.log('lateral at Z=kickDist:', (al*kickDist_yd*kickDist_yd + bl*kickDist_yd + cl).toFixed(3), 'yds');
 
-        // ── 11. Adjust tolerance window for ball's starting position vs uprights ──
-        // All trajectory X values are impact-relative (X=0 at impact).
-        // If ball started right of upright center, it has less room to drift right.
-        // Shift the window so the physics reflects real upright geometry.
+        // ── 11. Adjust tolerance window ───────────────────────────────────────
         let adjustedTol = { ...tol };
         if (uprightCenterX !== null) {
             const ballOffsetYds = (startPt.pos.x - uprightCenterX) * canvasWidth * yardsPerPixel_ref;
@@ -171,8 +166,8 @@ class KickPhysicsEngine {
         const driftAtLanding = al*kickDist_yd*kickDist_yd + bl*kickDist_yd + cl;
         let driftLabel;
         if      (Math.abs(driftAtLanding) < 0.5) driftLabel = 'Straight';
-        else if (driftAtLanding > 0)              driftLabel = 'Drift Right';
-        else                                       driftLabel = 'Drift Left';
+        else if (driftAtLanding > 0)             driftLabel = 'Drift Right';
+        else                                     driftLabel = 'Drift Left';
 
         console.log('driftAtLanding:', driftAtLanding.toFixed(3), 'yds →', driftLabel);
 
@@ -202,10 +197,6 @@ class KickPhysicsEngine {
         const crossbar = tol.crossbarFt || 10;
         let maxGood = 0;
 
-        console.log('  [loop] vUp_fps:', vUp_fps.toFixed(3), 'vFwd_yds:', vFwd_yds.toFixed(3), 'maxDist:', maxDist.toFixed(1));
-        console.log('  [loop] tol.leftTol:', tol.leftTol, 'tol.rightTol:', tol.rightTol, 'crossbar:', crossbar);
-
-        // Log first 10 yards and every 10 yards after to see where it fails
         for (let D = 0.5; D <= maxDist + 0.5; D += 0.5) {
             const t_D    = D / (vFwd_yds || 0.001);
             const height = vUp_fps * t_D - 0.5 * this.gravity * t_D * t_D;
@@ -213,17 +204,12 @@ class KickPhysicsEngine {
             const inWindow = lateral <= tol.rightTol && lateral >= -tol.leftTol;
             const heightOk = height >= crossbar;
 
-            if (D <= 5 || D % 10 === 0) {
-                console.log(`  D=${D.toFixed(1)}yd: t=${t_D.toFixed(3)}s  height=${height.toFixed(2)}ft (ok:${heightOk})  lateral=${lateral.toFixed(3)}yd (inWindow:${inWindow})  maxGood=${maxGood}`);
-            }
-
             if (heightOk && inWindow) maxGood = D;
         }
 
         return maxGood;
     }
 
-    // ── Weighted unconstrained parabola fit: y = ax² + bx + c ────────────────
     _fitParabolaWeighted(xs, ys, ws) {
         const n = xs.length;
         let s0=0,s1=0,s2=0,s3=0,s4=0,t0=0,t1=0,t2=0;
@@ -237,7 +223,6 @@ class KickPhysicsEngine {
         return this._solve3x3(M, rhs);
     }
 
-    // ── Unweighted parabola fit (used for vertical) ───────────────────────────
     _fitParabola(xs, ys) {
         const n = xs.length;
         let s1=0,s2=0,s3=0,s4=0,t0=0,t1=0,t2=0;
