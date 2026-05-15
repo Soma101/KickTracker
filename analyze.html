@@ -381,6 +381,14 @@
             border: none; border-radius: 12px; font-weight: bold;
             font-size: 13px; cursor: pointer; white-space: nowrap;
         }
+
+        /* ── Confirmation Modal ── */
+        .confirm-title { margin: 0 0 10px 0; font-size: 18px; text-align: center; }
+        .confirm-text { margin: 0 0 20px 0; font-size: 14px; color: #d1d1d6; text-align: center; line-height: 1.4; }
+        .confirm-btn-row { display: flex; gap: 10px; }
+        .btn-confirm-cancel { flex: 1; padding: 12px; background: #3a3a3c; color: white; border: none; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; }
+        .btn-confirm-disable { flex: 1; padding: 12px; background: #ff3b30; color: white; border: none; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; }
+
     </style>
 </head>
 <body>
@@ -402,6 +410,17 @@
         <div class="tutorial-btn-row">
             <button class="tutorial-btn-skip" id="tut-btn-skip">Don't Show Again</button>
             <button class="tutorial-btn-ok"   id="tut-btn-ok">OK, Got It</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="skip-confirm-modal" style="z-index: 400;">
+    <div class="modal-box" style="max-width: 320px; padding: 24px;">
+        <h3 class="confirm-title">Disable Tutorials?</h3>
+        <p class="confirm-text">Are you sure you want to hide step-by-step instructions? You can always turn them back on from the "How To Use" section.</p>
+        <div class="confirm-btn-row">
+            <button class="btn-confirm-cancel" id="btn-confirm-cancel">Cancel</button>
+            <button class="btn-confirm-disable" id="btn-confirm-disable">Disable</button>
         </div>
     </div>
 </div>
@@ -1428,7 +1447,6 @@ rebuildProgressDots();
 const TUTORIAL_DISABLED_KEY = 'kicktracker_tutorial_disabled';
 let lastTutorialStepShown = -1;
 
-// Updated Tutorial Content based on new instructions
 const TUTORIAL_CONTENT = {
     scale1: {
         title: 'Scale Reference',
@@ -1495,14 +1513,38 @@ function enableTutorials() {
     lastTutorialStepShown = -1;
 }
 
-// Function to intercept the user immediately upon video load with navigation instructions
+// Intercepts the skip click to show the confirmation dialog
+function handleSkipClick(onConfirm) {
+    const confirmModal = document.getElementById('skip-confirm-modal');
+    confirmModal.classList.add('visible');
+
+    const yesBtn = document.getElementById('btn-confirm-disable');
+    const cancelBtn = document.getElementById('btn-confirm-cancel');
+
+    // Remove previous listeners by cloning
+    const newYes = yesBtn.cloneNode(true);
+    const newCancel = cancelBtn.cloneNode(true);
+    yesBtn.parentNode.replaceChild(newYes, yesBtn);
+    cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+
+    newCancel.addEventListener('click', () => {
+        confirmModal.classList.remove('visible');
+    });
+
+    newYes.addEventListener('click', () => {
+        confirmModal.classList.remove('visible');
+        disableTutorials();
+        closeTutorial();
+        if (onConfirm) onConfirm();
+    });
+}
+
 function showIntroTutorial() {
     if (isTutorialDisabled()) {
         openSetup();
         return;
     }
 
-    // Determine specific device language
     const navInstructions = isTouchDevice
         ? "Pinch to zoom, and drag to move the image."
         : "Scroll to zoom, and click and drag to move the image.";
@@ -1519,11 +1561,9 @@ function showIntroTutorial() {
 
     document.getElementById('tutorial-modal').classList.add('visible');
 
-    // Override the standard buttons just for this intro step to open Setup afterward
     const okBtn = document.getElementById('tut-btn-ok');
     const skipBtn = document.getElementById('tut-btn-skip');
     
-    // Clear old listeners by cloning
     const newOk = okBtn.cloneNode(true);
     const newSkip = skipBtn.cloneNode(true);
     okBtn.parentNode.replaceChild(newOk, okBtn);
@@ -1536,14 +1576,13 @@ function showIntroTutorial() {
     });
 
     newSkip.addEventListener('click', () => {
-        disableTutorials();
-        closeTutorial();
-        restoreTutorialButtons();
-        openSetup(); 
+        handleSkipClick(() => {
+            restoreTutorialButtons();
+            openSetup();
+        });
     });
 }
 
-// Restore buttons back to their normal workflow step behavior
 function restoreTutorialButtons() {
     const okBtn = document.getElementById('tut-btn-ok');
     const skipBtn = document.getElementById('tut-btn-skip');
@@ -1557,8 +1596,7 @@ function restoreTutorialButtons() {
     });
 
     newSkip.addEventListener('click', () => {
-        disableTutorials();
-        closeTutorial();
+        handleSkipClick();
     });
 }
 
@@ -1566,15 +1604,12 @@ function showTutorialForStep(stepId, stepNum, totalSteps) {
     if (isTutorialDisabled()) return;
     const content = TUTORIAL_CONTENT[stepId];
     
-    // If the content is undefined (like scale2 or ballBottom), just return silently.
     if (!content) return;
 
-    // Populate modal
     document.getElementById('tut-step-label').innerText = `Step ${stepNum} of ${totalSteps}`;
     document.getElementById('tut-title').innerText = content.title;
     document.getElementById('tut-desc').innerText  = content.desc;
 
-    // GIF or placeholder
     const img = document.getElementById('tut-gif-img');
     const placeholder = document.getElementById('tut-gif-placeholder');
     if (content.gif) {
