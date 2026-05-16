@@ -1355,6 +1355,13 @@ function handleCalculateAndReport() {
     const nflGood = physics.calcMaxGoodExternal(report._vUp, report._vFwd, report._latCoeffs, report.kickDistance, nflTol);
     const cfbGood = physics.calcMaxGoodExternal(report._vUp, report._vFwd, report._latCoeffs, report.kickDistance, cfbTol);
 
+    // NEW: Save the alternate distances directly into the report object
+    report.nflGoodDistance = nflGood;
+    report.cfbGoodDistance = cfbGood;
+
+    let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
+    history.unshift({ ...report, date: new Date().toISOString(), config: setupConfig });
+
     let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
     history.unshift({ ...report, date: new Date().toISOString(), config: setupConfig });
     if (history.length > 100) history.pop();
