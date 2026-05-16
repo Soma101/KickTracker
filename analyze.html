@@ -306,7 +306,7 @@
             font-size: 16px; cursor: pointer; margin-top: 10px;
         }
 
-        /* ── Tutorial Modal ── */
+        /* ── Tutorial Modal (Updated) ── */
         #tutorial-modal {
             display: none;
             position: fixed;
@@ -322,7 +322,7 @@
             background: #1c1c1e;
             width: 100%;
             max-width: 380px; 
-            border-radius: 16px;
+            border-radius: 16px; 
             padding: 24px 20px;
             display: flex;
             flex-direction: column;
@@ -542,7 +542,7 @@
             <div class="report-row"><span>Kick Distance</span>   <span class="text-green"  id="rep-dist">-- yds</span></div>
             <div class="report-row"><span>Good From</span>       <span class="text-green"  id="rep-max">≤ 0 yds</span></div>
             <div class="report-row"><span>Drift Profile</span>   <span id="rep-miss" style="font-weight:bold;">--</span></div>
-            <div class="report-row"><span>Kick Result</span>     <span id="rep-result" style="font-weight:bold;">--</span></div>
+            <div class="report-row"><span id="rep-result-label">Past -- yds</span> <span id="rep-result" style="font-weight:bold;">--</span></div>
             <div class="report-row"><span>Drift at Landing</span><span id="rep-drift-yds" style="font-weight:bold;">-- yds</span></div>
         </div>
         <div class="report-section" id="rep-multi-section" style="display:none;">
@@ -720,7 +720,7 @@ function getSteps() {
             id: 'uprightLeft',
             status: () => `Step ${n} of ${totalSteps()}: Now scrub to IMPACT frame. Tap the LEFT upright post.`,
             label: 'CONFIRM LEFT POST',
-            color: '#ffffff',
+            color: '#636366', // Changed to dark gray for visibility
             ready: () => activeTap !== null,
             confirm: () => { uprightDots[0] = {...activeTap}; activeTap = null; }
         });
@@ -728,7 +728,7 @@ function getSteps() {
             id: 'uprightRight',
             status: () => `Step ${n} of ${totalSteps()}: Tap the RIGHT upright post (same frame).`,
             label: 'CONFIRM RIGHT POST',
-            color: '#ffffff',
+            color: '#636366', // Changed to dark gray for visibility
             ready: () => activeTap !== null,
             confirm: () => { uprightDots[1] = {...activeTap}; activeTap = null; }
         });
@@ -1368,8 +1368,10 @@ function handleCalculateAndReport() {
     document.getElementById('rep-miss').innerText      = report.drift;
     document.getElementById('rep-miss').className      = report.drift === 'Straight' ? 'text-green' : 'text-red';
     
-    document.getElementById('rep-result').innerText    = report.missReason;
-    document.getElementById('rep-result').className    = report.missReason === 'Good' ? 'text-green' : 'text-red';
+    // NEW LOGIC: Dynamic Past X Yds Label
+    document.getElementById('rep-result-label').innerText = `Past ${Math.floor(report.maxGoodDistance)} yds`;
+    document.getElementById('rep-result').innerText       = report.missReason;
+    document.getElementById('rep-result').className       = report.missReason === 'Good' ? 'text-green' : 'text-red';
 
     document.getElementById('rep-drift-yds').innerText = `${report.driftYards > 0 ? '+' : ''}${report.driftYards} yds`;
     document.getElementById('rep-time').innerText      = `${report.time}s`;
@@ -1419,15 +1421,10 @@ const TUTORIAL_CONTENT = {
         gif: null,
         emoji: '🏈',
     },
+    // Updated Left Upright step to explain both, skipping the right side popup completely
     uprightLeft: {
-        title: 'Left Upright Post',
-        desc: "Tap the LEFT upright post. This helps correct for any camera angle offset from center.",
-        gif: null,
-        emoji: '🥅',
-    },
-    uprightRight: {
-        title: 'Right Upright Post',
-        desc: "Tap the RIGHT upright post to complete the upright calibration.",
+        title: 'Upright Posts',
+        desc: "Tap the LEFT upright post, followed by the RIGHT upright post on the next step. This calibrates the goalposts to fix any camera angle offset.",
         gif: null,
         emoji: '🥅',
     },
@@ -1561,6 +1558,7 @@ function showTutorialForStep(stepId, stepNum, totalSteps) {
     if (isTutorialDisabled()) return;
     const content = TUTORIAL_CONTENT[stepId];
     
+    // If the step is uprightRight, it isn't in TUTORIAL_CONTENT anymore, so it skips cleanly!
     if (!content) return;
 
     document.getElementById('tut-step-label').innerText = `Step ${stepNum} of ${totalSteps}`;
