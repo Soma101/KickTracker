@@ -1361,9 +1361,6 @@ function handleCalculateAndReport() {
 
     let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
     history.unshift({ ...report, date: new Date().toISOString(), config: setupConfig });
-
-    let history = JSON.parse(localStorage.getItem('kickHistory')) || [];
-    history.unshift({ ...report, date: new Date().toISOString(), config: setupConfig });
     if (history.length > 100) history.pop();
     localStorage.setItem('kickHistory', JSON.stringify(history));
 
