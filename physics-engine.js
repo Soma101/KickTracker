@@ -2,7 +2,7 @@ class KickPhysicsEngine {
     constructor() {
         this.gravity = 32.174; // ft/s²
     }
-
+    
     // Notice we keep scaleDots in the parameters so analyze.html doesn't break
     calculate(startPt, peakPt, endPt,
               scaleDots, cameraDistance, canvasWidth,
@@ -13,6 +13,9 @@ class KickPhysicsEngine {
               uprightCenterX) {
 
         ballLengthIn = ballLengthIn || 11;
+
+        //TEMP REMOVE LATER
+        const missReason = "NONE"
 
         // ── 1. Scale reference (Using Football Size, ignoring scaleDots) ──────
         // Convert ball length from inches to yards (36 inches in a yard)
@@ -182,6 +185,7 @@ class KickPhysicsEngine {
         return {
             maxGoodDistance: maxGood,
             drift:           driftLabel,
+            missReason:      missReason,
             driftYards:      parseFloat(driftAtLanding.toFixed(2)),
             kickDistance:    parseFloat(kickDist_yd.toFixed(1)),
             time:            parseFloat(totalTime.toFixed(2)),
