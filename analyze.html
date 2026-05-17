@@ -1420,41 +1420,41 @@ const TUTORIAL_DISABLED_KEY = 'kicktracker_tutorial_disabled';
 let lastTutorialStepShown = -1;
 
 const TUTORIAL_CONTENT = {
+    const TUTORIAL_CONTENT = {
     ballTop: {
         title: 'Impact Frame',
         desc: "Scrub to when the kick just about connects with the ball (Impact), and select the top and the bottom of the ball.",
-        gif: null,
+        video: "compressed/top_bottom.mp4",
         emoji: '🏈',
     },
-    // Updated Left Upright step to explain both, skipping the right side popup completely
     uprightLeft: {
         title: 'Upright Posts',
         desc: "Tap the LEFT upright post, followed by the RIGHT upright post on the next step. This calibrates the goalposts to fix any camera angle offset.",
-        gif: null,
+        video: null, // Leaves the emoji placeholder until you record an uprights video
         emoji: '🥅',
     },
     halfUp: {
         title: 'Half-Way Up',
         desc: "Scrub to when the ball is about half way up and click on it.",
-        gif: null,
+        video: "compressed/half_up.mp4",
         emoji: '⬆️',
     },
     apex: {
         title: 'Apex Point',
         desc: "Scrub to when the ball is at the apex and click on it.",
-        gif: null,
+        video: "compressed/apex.mp4",
         emoji: '🔝',
     },
     halfDown: {
         title: 'Half-Way Down',
         desc: "Scrub to when the ball is about half way down and click on it.",
-        gif: null,
+        video: "compressed/half_down.mp4",
         emoji: '⬇️',
     },
     landing: {
         title: 'Landing Point',
         desc: "Scrub to when the ball lands and click on it.",
-        gif: null,
+        video: "compressed/landing.mp4",
         emoji: '🎯',
     },
 };
@@ -1512,11 +1512,14 @@ function showIntroTutorial() {
     document.getElementById('tut-title').innerText = "How to Move";
     document.getElementById('tut-desc').innerText  = navInstructions;
 
-    const img = document.getElementById('tut-gif-img');
+    const vid = document.getElementById('tut-vid-player');
     const placeholder = document.getElementById('tut-gif-placeholder');
-    img.style.display = 'none';
-    placeholder.style.display = 'flex';
-    placeholder.innerHTML = `<span>🗺️</span><p>Animation coming soon</p>`;
+    
+    // Injecting your tap & drag navigation video
+    vid.src = "compressed/tap_drag.mp4";
+    vid.style.display = 'block';
+    placeholder.style.display = 'none';
+    vid.play().catch(e => console.log("Autoplay prevented by browser:", e));
 
     document.getElementById('tutorial-modal').classList.add('visible');
 
@@ -1534,6 +1537,13 @@ function showIntroTutorial() {
         openSetup(); 
     });
 
+    newSkip.addEventListener('click', () => {
+        handleSkipClick(() => {
+            restoreTutorialButtons();
+            openSetup();
+        });
+    });
+}
     newSkip.addEventListener('click', () => {
         handleSkipClick(() => {
             restoreTutorialButtons();
