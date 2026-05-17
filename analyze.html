@@ -1416,11 +1416,14 @@ rebuildProgressDots();
 //  Tutorial System
 // ═══════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════
+//  Tutorial System
+// ═══════════════════════════════════════════════════════════════════════
+
 const TUTORIAL_DISABLED_KEY = 'kicktracker_tutorial_disabled';
 let lastTutorialStepShown = -1;
 
 const TUTORIAL_CONTENT = {
-    const TUTORIAL_CONTENT = {
     ballTop: {
         title: 'Impact Frame',
         desc: "Scrub to when the kick just about connects with the ball (Impact), and select the top and the bottom of the ball.",
@@ -1544,13 +1547,6 @@ function showIntroTutorial() {
         });
     });
 }
-    newSkip.addEventListener('click', () => {
-        handleSkipClick(() => {
-            restoreTutorialButtons();
-            openSetup();
-        });
-    });
-}
 
 function restoreTutorialButtons() {
     const okBtn = document.getElementById('tut-btn-ok');
@@ -1573,7 +1569,6 @@ function showTutorialForStep(stepId, stepNum, totalSteps) {
     if (isTutorialDisabled()) return;
     const content = TUTORIAL_CONTENT[stepId];
     
-    // If the step is uprightRight, it isn't in TUTORIAL_CONTENT anymore, so it skips cleanly!
     if (!content) return;
 
     document.getElementById('tut-step-label').innerText = `Step ${stepNum} of ${totalSteps}`;
@@ -1587,15 +1582,15 @@ function showTutorialForStep(stepId, stepNum, totalSteps) {
         vid.src = content.video;
         vid.style.display = 'block';
         placeholder.style.display = 'none';
-        // Force play just in case the browser paused it when hidden
         vid.play().catch(e => console.log("Autoplay prevented by browser:", e));
     } else {
         vid.style.display = 'none';
-        vid.pause(); // Save memory/battery when not showing a video
+        vid.pause();
         vid.src = "";
         placeholder.style.display = 'flex';
         placeholder.innerHTML = `<span>${content.emoji}</span><p>Animation coming soon</p>`;
     }
+
     document.getElementById('tutorial-modal').classList.add('visible');
 }
 
