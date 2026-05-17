@@ -1,4 +1,4 @@
-const VERSION = "v1.6.6";
+const VERSION = "v1.6.7";
 
 console.log("KickTracker build:", VERSION);
 
