@@ -1522,6 +1522,7 @@ function showIntroTutorial() {
     vid.src = "compressed/tap_drag.mp4";
     vid.style.display = 'block';
     placeholder.style.display = 'none';
+    vid.load(); // <--- ADD THIS LINE
     vid.play().catch(e => console.log("Autoplay prevented by browser:", e));
 
     document.getElementById('tutorial-modal').classList.add('visible');
@@ -1582,6 +1583,7 @@ function showTutorialForStep(stepId, stepNum, totalSteps) {
         vid.src = content.video;
         vid.style.display = 'block';
         placeholder.style.display = 'none';
+        vid.load(); // <--- ADD THIS LINE
         vid.play().catch(e => console.log("Autoplay prevented by browser:", e));
     } else {
         vid.style.display = 'none';
