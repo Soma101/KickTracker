@@ -352,8 +352,9 @@
             overflow: hidden;
             flex-shrink: 0;
         }
-        .tutorial-gif img {
+        .tutorial-gif video {
             width: 100%; height: 100%; object-fit: cover; border-radius: 12px;
+        }
         }
         .tutorial-gif-placeholder {
             display: flex; flex-direction: column;
@@ -396,7 +397,7 @@
         <div class="tutorial-step-label" id="tut-step-label">Step 1</div>
         <div class="tutorial-title" id="tut-title">Scale Reference</div>
         <div class="tutorial-gif" id="tut-gif">
-            <img id="tut-gif-img" src="" alt="" style="display:none;">
+            <video id="tut-vid-player" autoplay loop muted playsinline style="display:none;"></video>
             <div class="tutorial-gif-placeholder" id="tut-gif-placeholder">
                 <span>🎬</span>
                 <p>Animation placeholder</p>
@@ -1569,18 +1570,22 @@ function showTutorialForStep(stepId, stepNum, totalSteps) {
     document.getElementById('tut-title').innerText = content.title;
     document.getElementById('tut-desc').innerText  = content.desc;
 
-    const img = document.getElementById('tut-gif-img');
+    const vid = document.getElementById('tut-vid-player');
     const placeholder = document.getElementById('tut-gif-placeholder');
-    if (content.gif) {
-        img.src = content.gif;
-        img.style.display = 'block';
+    
+    if (content.video) {
+        vid.src = content.video;
+        vid.style.display = 'block';
         placeholder.style.display = 'none';
+        // Force play just in case the browser paused it when hidden
+        vid.play().catch(e => console.log("Autoplay prevented by browser:", e));
     } else {
-        img.style.display = 'none';
+        vid.style.display = 'none';
+        vid.pause(); // Save memory/battery when not showing a video
+        vid.src = "";
         placeholder.style.display = 'flex';
         placeholder.innerHTML = `<span>${content.emoji}</span><p>Animation coming soon</p>`;
     }
-
     document.getElementById('tutorial-modal').classList.add('visible');
 }
 
