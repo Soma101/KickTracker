@@ -343,8 +343,8 @@
         }
         .tutorial-gif {
             width: 100%;
-            height: 160px;
-            background: #2c2c2e;
+            height: 350px; /* Made the box taller so the video isn't tiny */
+            background: #000; /* Changed to pitch black so the empty space blends in */
             border-radius: 12px;
             display: flex;
             align-items: center;
@@ -353,7 +353,10 @@
             flex-shrink: 0;
         }
         .tutorial-gif video {
-            width: 100%; height: 100%; object-fit: cover; border-radius: 12px;
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain; /* MAGIC WORD: Shows the whole video, no cropping! */
+            border-radius: 12px;
         }
         }
         .tutorial-gif-placeholder {
