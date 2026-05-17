@@ -342,19 +342,18 @@
             text-align: center; color: #fff; margin: 0;
         }
         .tutorial-gif {
-            width: 100%;
-            /* Uses CSS math to force a perfect aspect ratio based on your 1290x2386 dimensions */
-            aspect-ratio: 1290 / 2386; 
-            max-height: 50dvh; /* Prevents the video from getting too tall on long screens */
-            background: #000;
+            width: 258px;  /* Scales the box down so it fits perfectly in the popup */
+            height: 478px; /* Maintains your exact 1290x2386 phone aspect ratio */
+            background: #000; 
             border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
             flex-shrink: 0;
-            margin: 0 auto;
+            margin: 0 auto; /* Centers the phone frame in the modal */
         }
+        
         .tutorial-gif video {
             width: 100%; 
             height: 100%; 
